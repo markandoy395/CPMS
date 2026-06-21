@@ -1,11 +1,52 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Edit, Trash2, Search } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, ScanLine, Printer, Paperclip, CheckCircle, AlertCircle, X } from 'lucide-react'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { ErrorAlert } from '../components/ErrorAlert'
 import { SuccessAlert } from '../components/SuccessAlert'
 import { itemService } from '../services/itemService'
+import { useAuth } from '../context/AuthContext'
+import { AssetScanner } from '../components/AssetScanner'
+import { AssetLabelModal } from '../components/AssetLabelModal'
+import { AssetAttachments } from '../components/AssetAttachments'
+import { FormOverlay } from '../components/FormOverlay'
+
+function createEmptyItemForm() {
+  return {
+    item_name: '',
+    description: '',
+    category: '',
+    subcategory: '',
+    item_code: '',
+    serial_number: '',
+    model_number: '',
+    brand: '',
+    purchase_date: new Date().toISOString().split('T')[0],
+    po_number: '',
+    vendor: '',
+    invoice_number: '',
+    unit_cost: 0,
+    total_cost: 0,
+    funding_source: '',
+    campus: '',
+    building: '',
+    room_number: '',
+    department: '',
+    assigned_to: '',
+    custodian_id: '',
+    asset_type: 'Fixed Asset',
+    quantity: 1,
+    condition: 'New',
+    warranty_expiry: '',
+    maintenance_schedule: '',
+    insurance_policy: '',
+    status: 'Active'
+  }
+}
 
 export default function InventoryPage() {
+  const { user } = useAuth()
+  const canManage = user?.role === 'Admin'
+  const canAdd = ['Admin', 'Custodian'].includes(user?.role)
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -15,47 +56,11 @@ export default function InventoryPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const [formData, setFormData] = useState({
-    // Basic Item Information
-    item_name: '',
-    description: '',
-    category: '',
-    subcategory: '',
-    
-    // Identification Details
-    item_code: '',
-    serial_number: '',
-    model_number: '',
-    brand: '',
-    
-    // Purchase Information
-    purchase_date: new Date().toISOString().split('T')[0],
-    po_number: '',
-    vendor: '',
-    invoice_number: '',
-    unit_cost: 0,
-    total_cost: 0,
-    funding_source: '',
-    
-    // Location & Assignment
-    campus: '',
-    building: '',
-    room_number: '',
-    department: '',
-    assigned_to: '',
-    custodian_id: '',
-    
-    // Asset Classification
-    asset_type: 'Fixed Asset',
-    quantity: 1,
-    condition: 'New',
-    warranty_expiry: '',
-    
-    // Tracking & Compliance
-    maintenance_schedule: '',
-    insurance_policy: '',
-    status: 'Active'
-  })
+  const [scannerTarget, setScannerTarget] = useState(null)
+  const [labelItem, setLabelItem] = useState(null)
+  const [attachmentItem, setAttachmentItem] = useState(null)
+  const [scanResult, setScanResult] = useState(null)
+  const [formData, setFormData] = useState(createEmptyItemForm)
 
   useEffect(() => {
     loadItems()
@@ -79,6 +84,7 @@ export default function InventoryPage() {
 
   const handleSearch = async (e) => {
     e.preventDefault()
+    setScanResult(null)
     setLoading(true)
     const result = await itemService.getAllItems({
       search: searchTerm,
@@ -108,36 +114,8 @@ export default function InventoryPage() {
         setSuccess(editingId ? 'Item updated successfully' : 'Item created successfully')
         setShowForm(false)
         setEditingId(null)
-        setFormData({
-          item_name: '',
-          description: '',
-          category: '',
-          subcategory: '',
-          item_code: '',
-          serial_number: '',
-          model_number: '',
-          brand: '',
-          purchase_date: new Date().toISOString().split('T')[0],
-          po_number: '',
-          vendor: '',
-          invoice_number: '',
-          unit_cost: 0,
-          total_cost: 0,
-          funding_source: '',
-          campus: '',
-          building: '',
-          room_number: '',
-          department: '',
-          assigned_to: '',
-          custodian_id: '',
-          asset_type: 'Fixed Asset',
-          quantity: 1,
-          condition: 'New',
-          warranty_expiry: '',
-          maintenance_schedule: '',
-          insurance_policy: '',
-          status: 'Active'
-        })
+        setFormData(createEmptyItemForm())
+        setScanResult(null)
         loadItems()
       } else {
         setError(result.message)
@@ -169,8 +147,51 @@ export default function InventoryPage() {
     setShowForm(true)
   }
 
+  const closeItemForm = () => {
+    setShowForm(false)
+    setEditingId(null)
+  }
+
+  const openNewItemForm = (itemCode = '') => {
+    setEditingId(null)
+    setFormData({ ...createEmptyItemForm(), item_code: itemCode })
+    setShowForm(true)
+  }
+
+  const handleScannedCode = async (code) => {
+    const target = scannerTarget
+    setScannerTarget(null)
+
+    if (target === 'item_code' || target === 'serial_number') {
+      setFormData(current => ({ ...current, [target]: code }))
+      setSuccess(target === 'item_code' ? 'Item code captured' : 'Serial number captured')
+      return
+    }
+
+    setSearchTerm(code)
+    setCategoryFilter('')
+    setStatusFilter('')
+    setLoading(true)
+    const result = await itemService.getAllItems({ search: code })
+    if (result.success) {
+      setItems(result.data)
+      if (result.data.length > 0) {
+        setScanResult({ code, item: result.data[0], matches: result.data.length })
+        setSuccess(`Asset found: ${result.data[0].item_name}`)
+      } else {
+        setScanResult({ code, item: null, matches: 0 })
+        setError(`No registered asset found for code: ${code}`)
+      }
+    } else {
+      setScanResult({ code, item: null, matches: 0, failed: true })
+      setError(result.message)
+    }
+    setLoading(false)
+  }
+
   const filteredItems = items.filter(item => {
-    const matchesSearch = item.item_name.toLowerCase().includes(searchTerm.toLowerCase())
+    const searchable = `${item.item_name} ${item.item_code} ${item.serial_number || ''}`.toLowerCase()
+    const matchesSearch = searchable.includes(searchTerm.toLowerCase())
     const matchesCategory = !categoryFilter || item.category === categoryFilter
     const matchesStatus = !statusFilter || item.status === statusFilter
     return matchesSearch && matchesCategory && matchesStatus
@@ -182,20 +203,59 @@ export default function InventoryPage() {
     <div className="page-container">
       <div className="page-header">
         <h1>Inventory Management</h1>
-        <button
-          className="btn btn-primary"
-          onClick={() => setShowForm(!showForm)}
-        >
-          <Plus size={18} /> Add Item
-        </button>
+        <div className="header-actions">
+          <button className="btn btn-secondary" onClick={() => setScannerTarget('search')}><ScanLine size={18} /> Scan Asset</button>
+          {canAdd && <button className="btn btn-primary" onClick={() => openNewItemForm()}><Plus size={18} /> Add Item</button>}
+        </div>
       </div>
 
       {error && <ErrorAlert message={error} onClose={() => setError('')} />}
       {success && <SuccessAlert message={success} onClose={() => setSuccess('')} />}
+      {scannerTarget && <AssetScanner onDetected={handleScannedCode} onClose={() => setScannerTarget(null)} />}
+      {labelItem && <AssetLabelModal item={labelItem} onClose={() => setLabelItem(null)} />}
+      {attachmentItem && <AssetAttachments item={attachmentItem} onClose={() => setAttachmentItem(null)} />}
+
+      {scanResult && (
+        <section className={`scanned-asset-result ${scanResult.item ? 'is-found' : 'is-missing'}`} aria-live="polite">
+          <div className="scanned-asset-result-icon">
+            {scanResult.item ? <CheckCircle size={23} /> : <AlertCircle size={23} />}
+          </div>
+          <div className="scanned-asset-result-content">
+            <div className="scanned-asset-result-heading">
+              <div>
+                <span>Scanned Asset Result</span>
+                <h2>{scanResult.item ? scanResult.item.item_name : 'Asset is not registered'}</h2>
+              </div>
+              <button className="btn-icon" type="button" onClick={() => setScanResult(null)} aria-label="Clear scan result"><X size={18} /></button>
+            </div>
+            <dl className="scanned-asset-details">
+              <div><dt>Scanned code</dt><dd>{scanResult.code}</dd></div>
+              {scanResult.item && <>
+                <div><dt>Item code</dt><dd>{scanResult.item.item_code}</dd></div>
+                <div><dt>Serial number</dt><dd>{scanResult.item.serial_number || 'N/A'}</dd></div>
+                <div><dt>Status</dt><dd>{scanResult.item.status}</dd></div>
+                <div><dt>Department</dt><dd>{scanResult.item.department || 'Unassigned'}</dd></div>
+              </>}
+            </dl>
+            <div className="scanned-asset-actions">
+              {scanResult.item ? <>
+                <button className="btn btn-secondary" type="button" onClick={() => setLabelItem(scanResult.item)}><Printer size={17} /> Print Label</button>
+                <button className="btn btn-secondary" type="button" onClick={() => setAttachmentItem(scanResult.item)}><Paperclip size={17} /> Photos & Files</button>
+              </> : canAdd && !scanResult.failed && (
+                <button className="btn btn-primary" type="button" onClick={() => openNewItemForm(scanResult.code)}><Plus size={17} /> Add to Inventory</button>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       {showForm && (
-        <div className="card form-card">
-          <h3>{editingId ? 'Edit Item' : 'Add New Item'}</h3>
+        <FormOverlay
+          title={editingId ? 'Edit Item' : 'Add New Item'}
+          description="Enter the property information and identification details."
+          onClose={closeItemForm}
+          size="wide"
+        >
           <form onSubmit={handleSubmit}>
             {/* Basic Item Information */}
             <div className="form-section">
@@ -254,22 +314,32 @@ export default function InventoryPage() {
               <div className="form-grid">
                 <div className="form-group">
                   <label>Item Code *</label>
-                  <input
-                    type="text"
-                    value={formData.item_code}
-                    onChange={(e) => setFormData({ ...formData, item_code: e.target.value })}
-                    placeholder="e.g., ITEM-001"
-                    required
-                  />
+                  <div className="inventory-code-input">
+                    <input
+                      type="text"
+                      value={formData.item_code}
+                      onChange={(e) => setFormData({ ...formData, item_code: e.target.value })}
+                      placeholder="Type or scan item code"
+                      required
+                    />
+                    <button type="button" className="btn btn-secondary" onClick={() => setScannerTarget('item_code')} title="Scan item code">
+                      <ScanLine size={18} /> Scan
+                    </button>
+                  </div>
                 </div>
                 <div className="form-group">
                   <label>Serial Number</label>
-                  <input
-                    type="text"
-                    value={formData.serial_number}
-                    onChange={(e) => setFormData({ ...formData, serial_number: e.target.value })}
-                    placeholder="e.g., SN12345678"
-                  />
+                  <div className="inventory-code-input">
+                    <input
+                      type="text"
+                      value={formData.serial_number}
+                      onChange={(e) => setFormData({ ...formData, serial_number: e.target.value })}
+                      placeholder="Type or scan serial number"
+                    />
+                    <button type="button" className="btn btn-secondary" onClick={() => setScannerTarget('serial_number')} title="Scan serial number">
+                      <ScanLine size={18} /> Scan
+                    </button>
+                  </div>
                 </div>
                 <div className="form-group">
                   <label>Brand/Manufacturer</label>
@@ -523,16 +593,13 @@ export default function InventoryPage() {
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => {
-                  setShowForm(false)
-                  setEditingId(null)
-                }}
+                onClick={closeItemForm}
               >
                 Cancel
               </button>
             </div>
           </form>
-        </div>
+        </FormOverlay>
       )}
 
       <div className="card">
@@ -564,10 +631,12 @@ export default function InventoryPage() {
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <option value="">All Status</option>
-                <option value="Available">Available</option>
+                <option value="Active">Active</option>
                 <option value="Assigned">Assigned</option>
-                <option value="Damaged">Damaged</option>
+                <option value="In Repair">In Repair</option>
+                <option value="Returned">Returned</option>
                 <option value="Disposed">Disposed</option>
+                <option value="Lost">Lost</option>
               </select>
             </div>
           </div>
@@ -603,6 +672,9 @@ export default function InventoryPage() {
                       </span>
                     </td>
                     <td className="action-buttons">
+                      <button className="btn-icon" onClick={() => setLabelItem(item)} title="Print asset label" aria-label="Print asset label"><Printer size={16} /></button>
+                      <button className="btn-icon" onClick={() => setAttachmentItem(item)} title="Photos and files" aria-label="Open photos and files"><Paperclip size={16} /></button>
+                      {canManage && <>
                       <button
                         className="btn-icon btn-edit"
                         onClick={() => handleEdit(item)}
@@ -615,6 +687,7 @@ export default function InventoryPage() {
                       >
                         <Trash2 size={16} />
                       </button>
+                      </>}
                     </td>
                   </tr>
                 ))

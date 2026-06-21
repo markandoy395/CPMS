@@ -43,7 +43,7 @@ export default function SignupPage() {
     )
 
     if (result.success) {
-      navigate('/')
+      navigate('/login')
     } else {
       setError(result.message || 'Signup failed')
     }
@@ -114,19 +114,6 @@ export default function SignupPage() {
                 placeholder="••••••••"
                 required
               />
-            </div>
-
-            <div className="form-group">
-              <label>Role</label>
-              <select
-                name="role"
-                value={formData.role}
-                onChange={handleChange}
-              >
-                <option value="Custodian">Custodian</option>
-                <option value="Admin">Admin</option>
-                <option value="Auditor">Auditor</option>
-              </select>
             </div>
 
             <button

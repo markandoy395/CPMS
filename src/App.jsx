@@ -2,6 +2,7 @@ import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { PrivateRoute } from './components/PrivateRoute'
+import { RoleRoute } from './components/RoleRoute'
 import { Sidebar } from './components/Sidebar'
 
 // Pages
@@ -16,12 +17,13 @@ import UserManagementPage from './pages/UserManagementPage'
 import ProfilePage from './pages/ProfilePage'
 import SettingsPage from './pages/SettingsPage'
 import RisFormPage from './pages/RisFormPage'
+import OperationsPage from './pages/OperationsPage'
 
 import './styles/index.css'
 
 function App() {
   return (
-    <Router>
+    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
         <Routes>
           {/* Public Routes */}
@@ -41,9 +43,10 @@ function App() {
                       <Route path="/inventory" element={<InventoryPage />} />
                       <Route path="/custodians" element={<CustodianPage />} />
                       <Route path="/transactions" element={<TransactionsPage />} />
+                      <Route path="/operations" element={<OperationsPage />} />
                       <Route path="/ris-form" element={<RisFormPage />} />
-                      <Route path="/reports" element={<ReportsPage />} />
-                      <Route path="/users" element={<UserManagementPage />} />
+                      <Route path="/reports" element={<RoleRoute roles={['Admin', 'Auditor']}><ReportsPage /></RoleRoute>} />
+                      <Route path="/users" element={<RoleRoute roles={['Admin']}><UserManagementPage /></RoleRoute>} />
                       <Route path="/profile" element={<ProfilePage />} />
                       <Route path="/settings" element={<SettingsPage />} />
                       <Route path="*" element={<Navigate to="/" replace />} />

@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ErrorAlert } from '../components/ErrorAlert'
-
 export default function LoginPage() {
   const navigate = useNavigate()
   const { login } = useAuth()
@@ -10,7 +9,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')

@@ -1,26 +1,30 @@
 {
   "name": "cpms-react",
   "version": "1.0.0",
-  "description": "Custodial Property Management System built with React and Supabase",
+  "description": "Custodial Property Management System built with React, PHP, and XAMPP MariaDB",
   "type": "module",
   "private": true,
   "dependencies": {
-    "@supabase/supabase-js": "^2.26.0",
-    "axios": "^1.4.0",
-    "date-fns": "^2.30.0",
+    "@zxing/browser": "0.1.5",
     "jszip": "^3.10.1",
     "lucide-react": "^0.263.1",
+    "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.8.0"
+    "react-router-dom": "^6.8.0",
+    "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.0",
-    "npm": "^11.6.0",
     "vite": "^7.3.1"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "@zxing/library": "0.21.3"
   },
   "scripts": {
     "dev": "vite",
+    "api": "C:\\xampp\\php\\php.exe -S 127.0.0.1:8000 api/index.php",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext js,jsx"

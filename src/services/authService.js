@@ -1,147 +1,44 @@
-// Mock Authentication Service (Supabase Disabled)
-
-import { MOCK_USERS } from './mockData.js'
+import { apiRequest } from './apiClient'
 
 export const authService = {
   async login(email, password) {
-    try {
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      const user = MOCK_USERS.find(u => u.email === email)
-      
-      if (!user || user.password !== password) {
-        return {
-          success: false,
-          message: 'Invalid email or password'
-        }
-      }
-
-      const userData = { ...user }
-      delete userData.password
-      
-      // Store in localStorage
-      localStorage.setItem('user', JSON.stringify(userData))
-      localStorage.setItem('token', `token_${user.id}`)
-      
-      return {
-        success: true,
-        user: userData
-      }
-    } catch (error) {
-      return {
-        success: false,
-        message: error.message
-      }
+    const result = await apiRequest('/auth/login', { method: 'POST', body: { email, password } })
+    if (result.success) {
+      localStorage.setItem('cpms_token', result.token)
+      localStorage.setItem('user', JSON.stringify(result.user))
     }
+    return result
   },
 
   async logout() {
-    try {
-      localStorage.removeItem('user')
-      localStorage.removeItem('token')
-      return { success: true }
-    } catch (error) {
-      return { success: false, message: error.message }
-    }
+    const result = await apiRequest('/auth/logout', { method: 'POST' })
+    localStorage.removeItem('cpms_token')
+    localStorage.removeItem('user')
+    return result.success ? result : { success: true }
   },
 
-  async signup(email, password, name, role = 'Custodian') {
-    try {
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      // Check if user already exists
-      if (MOCK_USERS.find(u => u.email === email)) {
-        return {
-          success: false,
-          message: 'Email already registered'
-        }
-      }
-
-      const newUser = {
-        id: Date.now().toString(),
-        name,
-        email,
-        password,
-        role,
-        status: 'Active'
-      }
-
-      // Add to mock users
-      MOCK_USERS.push(newUser)
-
-      const userData = { ...newUser }
-      delete userData.password
-      
-      // Store in localStorage
-      localStorage.setItem('user', JSON.stringify(userData))
-      localStorage.setItem('token', `token_${newUser.id}`)
-      
-      return {
-        success: true,
-        user: userData
-      }
-    } catch (error) {
-      return {
-        success: false,
-        message: error.message
-      }
-    }
+  async signup(email, password, name) {
+    return apiRequest('/auth/signup', { method: 'POST', body: { email, password, name } })
   },
 
   async getCurrentUser() {
-    try {
-      const user = localStorage.getItem('user')
-      return user ? JSON.parse(user) : null
-    } catch (error) {
-      console.error('Error getting current user:', error)
-      return null
-    }
+    if (!localStorage.getItem('cpms_token')) return null
+    const result = await apiRequest('/auth/me')
+    if (!result.success) return null
+    localStorage.setItem('user', JSON.stringify(result.user))
+    return result.user
   },
 
-  async updateProfile(userId, { name, email }) {
-    try {
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 300))
-      
-      const user = MOCK_USERS.find(u => u.id === userId)
-      if (!user) {
-        return { success: false, message: 'User not found' }
-      }
-
-      user.name = name
-      user.email = email
-
-      const userData = { ...user }
-      delete userData.password
-      
-      localStorage.setItem('user', JSON.stringify(userData))
-      
-      return { success: true, user: userData }
-    } catch (error) {
-      return { success: false, message: error.message }
-    }
+  async updateProfile(_userId, data) {
+    const result = await apiRequest('/auth/profile', { method: 'PUT', body: data })
+    if (result.success) localStorage.setItem('user', JSON.stringify(result.user))
+    return result
   },
 
-  async changePassword(newPassword) {
-    try {
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 300))
-      
-      const currentUser = await this.getCurrentUser()
-      if (!currentUser) {
-        return { success: false, message: 'User not authenticated' }
-      }
-
-      const user = MOCK_USERS.find(u => u.id === currentUser.id)
-      if (user) {
-        user.password = newPassword
-      }
-
-      return { success: true }
-    } catch (error) {
-      return { success: false, message: error.message }
-    }
+  async changePassword(currentPassword, newPassword) {
+    return apiRequest('/auth/password', {
+      method: 'POST',
+      body: { current_password: currentPassword, new_password: newPassword }
+    })
   }
 }

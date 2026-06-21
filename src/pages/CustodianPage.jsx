@@ -4,8 +4,12 @@ import { LoadingSpinner } from '../components/LoadingSpinner'
 import { ErrorAlert } from '../components/ErrorAlert'
 import { SuccessAlert } from '../components/SuccessAlert'
 import { custodianService } from '../services/custodianService'
+import { useAuth } from '../context/AuthContext'
+import { FormOverlay } from '../components/FormOverlay'
 
 export default function CustodianPage() {
+  const { user } = useAuth()
+  const canManage = user?.role === 'Admin'
   const [custodians, setCustodians] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -116,6 +120,11 @@ export default function CustodianPage() {
     setShowForm(true)
   }
 
+  const closeForm = () => {
+    setShowForm(false)
+    setEditingId(null)
+  }
+
   const filteredCustodians = custodians.filter(custodian => {
     const matchesSearch = (custodian.users?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = !statusFilter || custodian.status === statusFilter
@@ -128,20 +137,23 @@ export default function CustodianPage() {
     <div className="page-container">
       <div className="page-header">
         <h1>Custodian Management</h1>
-        <button
+        {canManage && <button
           className="btn btn-primary"
           onClick={() => setShowForm(!showForm)}
         >
           <Plus size={18} /> Add Custodian
-        </button>
+        </button>}
       </div>
 
       {error && <ErrorAlert message={error} onClose={() => setError('')} />}
       {success && <SuccessAlert message={success} onClose={() => setSuccess('')} />}
 
       {showForm && (
-        <div className="card form-card">
-          <h3>{editingId ? 'Edit Custodian' : 'Add New Custodian'}</h3>
+        <FormOverlay
+          title={editingId ? 'Edit Custodian' : 'Add New Custodian'}
+          description="Maintain the custodian's assignment and contact information."
+          onClose={closeForm}
+        >
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="form-group">
@@ -200,16 +212,13 @@ export default function CustodianPage() {
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => {
-                  setShowForm(false)
-                  setEditingId(null)
-                }}
+                onClick={closeForm}
               >
                 Cancel
               </button>
             </div>
           </form>
-        </div>
+        </FormOverlay>
       )}
 
       <div className="card">
@@ -265,6 +274,7 @@ export default function CustodianPage() {
                       </span>
                     </td>
                     <td className="action-buttons">
+                      {canManage && <>
                       <button
                         className="btn-icon btn-edit"
                         onClick={() => handleEdit(custodian)}
@@ -277,6 +287,7 @@ export default function CustodianPage() {
                       >
                         <Trash2 size={16} />
                       </button>
+                      </>}
                     </td>
                   </tr>
                 ))

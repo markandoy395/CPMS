@@ -7,6 +7,7 @@ import {
   Repeat,
   FileText,
   ClipboardList,
+  Wrench,
   Settings,
   LogOut,
   Briefcase,
@@ -16,7 +17,7 @@ import { useAuth } from '../context/AuthContext'
 
 export function Sidebar() {
   const location = useLocation()
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
 
   const isActive = (path) => location.pathname === path
 
@@ -30,8 +31,10 @@ export function Sidebar() {
     { path: '/inventory', label: 'Inventory', icon: Package },
     { path: '/custodians', label: 'Custodians', icon: Users },
     { path: '/transactions', label: 'Transactions', icon: Repeat },
+    { path: '/operations', label: 'Operations', icon: Wrench },
     { path: '/ris-form', label: 'RIS Form', icon: ClipboardList },
-    { path: '/reports', label: 'Reports', icon: FileText },
+    { path: '/reports', label: 'Reports', icon: FileText, roles: ['Admin', 'Auditor'] },
+    { path: '/users', label: 'Users', icon: Users, roles: ['Admin'] },
     { path: '/profile', label: 'Profile', icon: User },
     { path: '/settings', label: 'Settings', icon: Settings }
   ]
@@ -44,7 +47,7 @@ export function Sidebar() {
       </div>
 
       <nav className="sidebar-nav">
-        {menuItems.map(item => {
+        {menuItems.filter(item => !item.roles || item.roles.includes(user?.role)).map(item => {
           const Icon = item.icon
           return (
             <Link

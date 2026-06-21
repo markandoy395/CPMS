@@ -49,9 +49,7 @@ export function AuthProvider({ children }) {
   const signup = useCallback(async (email, password, name, role) => {
     setError(null)
     const result = await authService.signup(email, password, name, role)
-    if (result.success) {
-      setUser(result.user)
-    } else {
+    if (!result.success) {
       setError(result.message)
     }
     return result
@@ -68,9 +66,9 @@ export function AuthProvider({ children }) {
     return result
   }, [])
 
-  const changePassword = useCallback(async (newPassword) => {
+  const changePassword = useCallback(async (currentPassword, newPassword) => {
     setError(null)
-    const result = await authService.changePassword(newPassword)
+    const result = await authService.changePassword(currentPassword, newPassword)
     if (!result.success) {
       setError(result.message)
     }

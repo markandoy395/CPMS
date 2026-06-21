@@ -1,24 +1,29 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Edit, Trash2, Search } from 'lucide-react'
+import { Plus, Search } from 'lucide-react'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { ErrorAlert } from '../components/ErrorAlert'
 import { SuccessAlert } from '../components/SuccessAlert'
 import { transactionService } from '../services/transactionService'
+import { itemService } from '../services/itemService'
+import { custodianService } from '../services/custodianService'
+import { useAuth } from '../context/AuthContext'
+import { FormOverlay } from '../components/FormOverlay'
 
 export default function TransactionsPage() {
+  const { user } = useAuth()
   const [transactions, setTransactions] = useState([])
+  const [items, setItems] = useState([])
+  const [custodians, setCustodians] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [showForm, setShowForm] = useState(false)
-  const [editingId, setEditingId] = useState(null)
   const [formData, setFormData] = useState({
     item_id: '',
     custodian_id: '',
     transaction_type: 'Issuance',
-    issued_by: '',
     notes: '',
     par_id: '',
     ics_id: ''
@@ -26,6 +31,10 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     loadTransactions()
+    Promise.all([itemService.getAllItems(), custodianService.getAllCustodians()]).then(([itemsResult, custodiansResult]) => {
+      if (itemsResult.success) setItems(itemsResult.data)
+      if (custodiansResult.success) setCustodians(custodiansResult.data)
+    })
   }, [])
 
   const loadTransactions = async () => {
@@ -62,22 +71,15 @@ export default function TransactionsPage() {
     setLoading(true)
 
     try {
-      let result
-      if (editingId) {
-        result = await transactionService.updateTransaction(editingId, formData)
-      } else {
-        result = await transactionService.createTransaction(formData)
-      }
+      const result = await transactionService.createTransaction(formData)
 
       if (result.success) {
-        setSuccess(editingId ? 'Transaction updated successfully' : 'Transaction created successfully')
+        setSuccess('Transaction recorded and inventory updated successfully')
         setShowForm(false)
-        setEditingId(null)
         setFormData({
           item_id: '',
           custodian_id: '',
           transaction_type: 'Issuance',
-          issued_by: '',
           notes: '',
           par_id: '',
           ics_id: ''
@@ -93,34 +95,6 @@ export default function TransactionsPage() {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this transaction?')) return
-
-    setLoading(true)
-    const result = await transactionService.deleteTransaction(id)
-    if (result.success) {
-      setSuccess('Transaction deleted successfully')
-      loadTransactions()
-    } else {
-      setError(result.message)
-    }
-    setLoading(false)
-  }
-
-  const handleEdit = (transaction) => {
-    setFormData({
-      item_id: transaction.item_id,
-      custodian_id: transaction.custodian_id,
-      transaction_type: transaction.transaction_type,
-      issued_by: transaction.issued_by,
-      notes: transaction.notes || '',
-      par_id: transaction.par_id || '',
-      ics_id: transaction.ics_id || ''
-    })
-    setEditingId(transaction.id)
-    setShowForm(true)
-  }
-
   const filteredTransactions = transactions.filter(transaction => {
     const matchesSearch = (transaction.items?.item_name || '').toLowerCase().includes(searchTerm.toLowerCase())
     const matchesType = !typeFilter || transaction.transaction_type === typeFilter
@@ -133,40 +107,46 @@ export default function TransactionsPage() {
     <div className="page-container">
       <div className="page-header">
         <h1>Transactions</h1>
-        <button
+        {user?.role === 'Admin' && <button
           className="btn btn-primary"
           onClick={() => setShowForm(!showForm)}
         >
           <Plus size={18} /> Record Transaction
-        </button>
+        </button>}
       </div>
 
       {error && <ErrorAlert message={error} onClose={() => setError('')} />}
       {success && <SuccessAlert message={success} onClose={() => setSuccess('')} />}
 
       {showForm && (
-        <div className="card form-card">
-          <h3>{editingId ? 'Edit Transaction' : 'Record New Transaction'}</h3>
+        <FormOverlay
+          title="Record New Transaction"
+          description="Issue, transfer, return, or dispose of an inventory item."
+          onClose={() => setShowForm(false)}
+        >
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Item ID</label>
-                <input
-                  type="text"
+                <label>Item</label>
+                <select
                   value={formData.item_id}
                   onChange={(e) => setFormData({ ...formData, item_id: e.target.value })}
-                  placeholder="Item ID"
                   required
-                />
+                >
+                  <option value="">Select item</option>
+                  {items.map(item => <option key={item.id} value={item.id}>{item.item_code} - {item.item_name} ({item.status})</option>)}
+                </select>
               </div>
               <div className="form-group">
-                <label>Custodian ID</label>
-                <input
-                  type="text"
+                <label>Receiving Custodian</label>
+                <select
                   value={formData.custodian_id}
                   onChange={(e) => setFormData({ ...formData, custodian_id: e.target.value })}
-                  placeholder="Custodian ID"
-                />
+                  required={['Issuance', 'Transfer'].includes(formData.transaction_type)}
+                >
+                  <option value="">None</option>
+                  {custodians.filter(c => c.status === 'Active').map(c => <option key={c.id} value={c.id}>{c.users?.name} - {c.department}</option>)}
+                </select>
               </div>
               <div className="form-group">
                 <label>Transaction Type</label>
@@ -179,16 +159,6 @@ export default function TransactionsPage() {
                   <option value="Return">Return</option>
                   <option value="Disposal">Disposal</option>
                 </select>
-              </div>
-              <div className="form-group">
-                <label>Issued By (User ID)</label>
-                <input
-                  type="text"
-                  value={formData.issued_by}
-                  onChange={(e) => setFormData({ ...formData, issued_by: e.target.value })}
-                  placeholder="Issuing Officer"
-                  required
-                />
               </div>
               <div className="form-group">
                 <label>PAR ID</label>
@@ -220,21 +190,18 @@ export default function TransactionsPage() {
             </div>
             <div className="form-actions">
               <button type="submit" className="btn btn-primary" disabled={loading}>
-                {loading ? 'Saving...' : editingId ? 'Update Transaction' : 'Record Transaction'}
+                {loading ? 'Saving...' : 'Record Transaction'}
               </button>
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => {
-                  setShowForm(false)
-                  setEditingId(null)
-                }}
+                onClick={() => setShowForm(false)}
               >
                 Cancel
               </button>
             </div>
           </form>
-        </div>
+        </FormOverlay>
       )}
 
       <div className="card">
@@ -275,7 +242,6 @@ export default function TransactionsPage() {
                 <th>Issued By</th>
                 <th>PAR ID</th>
                 <th>ICS ID</th>
-                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -289,29 +255,15 @@ export default function TransactionsPage() {
                         {transaction.transaction_type}
                       </span>
                     </td>
-                    <td>{transaction.custodians?.department || 'N/A'}</td>
-                    <td>{transaction.users?.name || 'N/A'}</td>
+                    <td>{transaction.custodians?.users?.name || 'N/A'}</td>
+                    <td>{transaction.issuer?.name || 'N/A'}</td>
                     <td>{transaction.par_id || '-'}</td>
                     <td>{transaction.ics_id || '-'}</td>
-                    <td className="action-buttons">
-                      <button
-                        className="btn-icon btn-edit"
-                        onClick={() => handleEdit(transaction)}
-                      >
-                        <Edit size={16} />
-                      </button>
-                      <button
-                        className="btn-icon btn-delete"
-                        onClick={() => handleDelete(transaction.id)}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="8" className="text-center">No transactions found</td>
+                  <td colSpan="7" className="text-center">No transactions found</td>
                 </tr>
               )}
             </tbody>

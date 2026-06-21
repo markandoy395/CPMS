@@ -121,22 +121,6 @@ export default function ProfilePage() {
     }
   }
 
-  const handleToggle2FA = async (enable) => {
-    setError('')
-    setSuccess('')
-
-    const result = await profileService.toggleTwoFactor(user?.id, enable)
-    if (result.success) {
-      setSuccess(result.message)
-      setSecuritySummary(prev => ({
-        ...prev,
-        two_factor_enabled: enable
-      }))
-    } else {
-      setError(result.message)
-    }
-  }
-
   const handleExportData = async () => {
     setError('')
     const result = await profileService.exportProfileData(user?.id)
@@ -152,6 +136,13 @@ export default function ProfilePage() {
     } else {
       setError(result.message)
     }
+  }
+
+  const handlePreferenceChange = async (field, checked) => {
+    const updated = { ...preferences, [field]: checked }
+    setPreferences(updated)
+    const result = await profileService.updatePreferences(updated)
+    if (!result.success) setError(result.message)
   }
 
   if (loading) return <LoadingSpinner />
@@ -443,7 +434,7 @@ export default function ProfilePage() {
                 <div>
                   <p className="security-label">Two-Factor Authentication</p>
                   <p className="security-value">
-                    {securitySummary?.two_factor_enabled ? 'Enabled' : 'Disabled'}
+                    Not configured
                   </p>
                 </div>
               </div>
@@ -515,22 +506,6 @@ export default function ProfilePage() {
             </form>
           </div>
 
-          <div className="card">
-            <h3>Two-Factor Authentication</h3>
-            <div className="twofa-section">
-              <p>
-                {securitySummary?.two_factor_enabled
-                  ? '2FA is currently enabled for your account.'
-                  : '2FA is currently disabled. Enable it for enhanced security.'}
-              </p>
-              <button
-                className={`btn ${securitySummary?.two_factor_enabled ? 'btn-danger' : 'btn-success'}`}
-                onClick={() => handleToggle2FA(!securitySummary?.two_factor_enabled)}
-              >
-                {securitySummary?.two_factor_enabled ? 'Disable 2FA' : 'Enable 2FA'}
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
@@ -547,13 +522,8 @@ export default function ProfilePage() {
                 </div>
                 <input
                   type="checkbox"
-                  checked={preferences?.notifications_email || false}
-                  onChange={(e) =>
-                    setPreferences({
-                      ...preferences,
-                      notifications_email: e.target.checked
-                    })
-                  }
+                  checked={Boolean(Number(preferences?.email_notifications))}
+                  onChange={(e) => handlePreferenceChange('email_notifications', e.target.checked)}
                 />
               </div>
               <div className="setting-item">
@@ -563,13 +533,8 @@ export default function ProfilePage() {
                 </div>
                 <input
                   type="checkbox"
-                  checked={preferences?.notifications_push || false}
-                  onChange={(e) =>
-                    setPreferences({
-                      ...preferences,
-                      notifications_push: e.target.checked
-                    })
-                  }
+                  checked={Boolean(Number(preferences?.system_notifications))}
+                  onChange={(e) => handlePreferenceChange('system_notifications', e.target.checked)}
                 />
               </div>
               <div className="setting-item">
@@ -577,14 +542,14 @@ export default function ProfilePage() {
                   <p className="setting-label">Weekly Reports</p>
                   <p className="setting-description">Receive weekly summary reports</p>
                 </div>
-                <input type="checkbox" defaultChecked={false} />
+                <input type="checkbox" checked={Boolean(Number(preferences?.weekly_reports))} onChange={(e) => handlePreferenceChange('weekly_reports', e.target.checked)} />
               </div>
               <div className="setting-item">
                 <div>
                   <p className="setting-label">Maintenance Alerts</p>
                   <p className="setting-description">Get alerts for maintenance due items</p>
                 </div>
-                <input type="checkbox" defaultChecked={true} />
+                <input type="checkbox" checked={Boolean(Number(preferences?.item_updates))} onChange={(e) => handlePreferenceChange('item_updates', e.target.checked)} />
               </div>
             </div>
           </div>

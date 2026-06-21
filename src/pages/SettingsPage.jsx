@@ -1,9 +1,10 @@
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { ErrorAlert } from '../components/ErrorAlert'
 import { SuccessAlert } from '../components/SuccessAlert'
 import { Settings, Lock, Bell, Eye } from 'lucide-react'
+import { profileService } from '../services/profileService'
 
 export default function SettingsPage() {
   const { user, changePassword } = useAuth()
@@ -20,6 +21,30 @@ export default function SettingsPage() {
     new: false,
     confirm: false
   })
+  const [preferences, setPreferences] = useState({
+    email_notifications: true,
+    system_notifications: true,
+    activity_log: true,
+    item_updates: true,
+    transaction_alerts: true,
+    weekly_reports: false
+  })
+  const [databaseConnected, setDatabaseConnected] = useState(false)
+
+  useEffect(() => {
+    profileService.getPreferences().then(result => {
+      if (result.success) {
+        setPreferences(Object.fromEntries(Object.entries(result.data).map(([key, value]) => [key, ['1', 1, true].includes(value)])))
+        setDatabaseConnected(true)
+      }
+    })
+  }, [])
+
+  const savePreferences = async () => {
+    const result = await profileService.updatePreferences(preferences)
+    if (result.success) setSuccess('Preferences saved successfully')
+    else setError(result.message)
+  }
 
   const handlePasswordChange = (e) => {
     const { name, value } = e.target
@@ -39,14 +64,14 @@ export default function SettingsPage() {
       return
     }
 
-    if (passwordForm.newPassword.length < 6) {
-      setError('Password must be at least 6 characters')
+    if (passwordForm.newPassword.length < 8) {
+      setError('Password must be at least 8 characters')
       return
     }
 
     setLoading(true)
 
-    const result = await changePassword(passwordForm.newPassword)
+    const result = await changePassword(passwordForm.currentPassword, passwordForm.newPassword)
     if (result.success) {
       setSuccess('Password changed successfully')
       setPasswordForm({
@@ -163,16 +188,17 @@ export default function SettingsPage() {
           <div className="preferences-list">
             <div className="preference-item">
               <span className="preference-label">Email Notifications</span>
-              <input type="checkbox" defaultChecked className="preference-toggle" />
+              <input type="checkbox" checked={preferences.email_notifications} onChange={e => setPreferences({ ...preferences, email_notifications: e.target.checked })} className="preference-toggle" />
             </div>
             <div className="preference-item">
               <span className="preference-label">System Notifications</span>
-              <input type="checkbox" defaultChecked className="preference-toggle" />
+              <input type="checkbox" checked={preferences.system_notifications} onChange={e => setPreferences({ ...preferences, system_notifications: e.target.checked })} className="preference-toggle" />
             </div>
             <div className="preference-item">
               <span className="preference-label">Activity Log</span>
-              <input type="checkbox" defaultChecked className="preference-toggle" />
+              <input type="checkbox" checked={preferences.activity_log} onChange={e => setPreferences({ ...preferences, activity_log: e.target.checked })} className="preference-toggle" />
             </div>
+            <button type="button" className="btn btn-primary" onClick={savePreferences}>Save Preferences</button>
           </div>
         </div>
 
@@ -183,21 +209,21 @@ export default function SettingsPage() {
           </div>
           <div className="notifications-list">
             <div className="notification-item">
-              <input type="checkbox" id="item-updates" defaultChecked />
+              <input type="checkbox" id="item-updates" checked={preferences.item_updates} onChange={e => setPreferences({ ...preferences, item_updates: e.target.checked })} />
               <label htmlFor="item-updates">
                 <span className="notification-title">Item Updates</span>
                 <span className="notification-desc">Get notified when items are assigned or returned</span>
               </label>
             </div>
             <div className="notification-item">
-              <input type="checkbox" id="transaction-alerts" defaultChecked />
+              <input type="checkbox" id="transaction-alerts" checked={preferences.transaction_alerts} onChange={e => setPreferences({ ...preferences, transaction_alerts: e.target.checked })} />
               <label htmlFor="transaction-alerts">
                 <span className="notification-title">Transaction Alerts</span>
                 <span className="notification-desc">Receive alerts on new transactions</span>
               </label>
             </div>
             <div className="notification-item">
-              <input type="checkbox" id="reports" />
+              <input type="checkbox" id="reports" checked={preferences.weekly_reports} onChange={e => setPreferences({ ...preferences, weekly_reports: e.target.checked })} />
               <label htmlFor="reports">
                 <span className="notification-title">Weekly Reports</span>
                 <span className="notification-desc">Receive weekly summary reports</span>
@@ -216,15 +242,15 @@ export default function SettingsPage() {
           </div>
           <div className="info-row">
             <span className="info-label">Database:</span>
-            <span className="info-value">Supabase</span>
+            <span className="info-value">XAMPP MariaDB</span>
           </div>
           <div className="info-row">
             <span className="info-label">Status:</span>
-            <span className="info-value text-success">Active</span>
+            <span className={`info-value ${databaseConnected ? 'text-success' : 'text-danger'}`}>{databaseConnected ? 'Connected' : 'Unavailable'}</span>
           </div>
           <div className="info-row">
             <span className="info-label">Last Backup:</span>
-            <span className="info-value">{new Date().toLocaleString()}</span>
+            <span className="info-value">Not configured</span>
           </div>
         </div>
       </div>
