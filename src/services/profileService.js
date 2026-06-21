@@ -28,7 +28,7 @@ export const profileService = {
     const result = await apiRequest('/reports')
     if (!result.success) return result
     const reports = result.data
-    const data = role === 'Admin'
+    const data = ['Super Admin', 'Admin'].includes(role)
       ? { users_managed: 0, audits_conducted: reports.transactions.totalTransactions, last_security_check: reports.generated_at }
       : role === 'Auditor'
         ? { audit_scope: 'All Departments', audits_completed: reports.transactions.totalTransactions, current_audits: reports.maintenance.pending, compliance_rate: 100 }

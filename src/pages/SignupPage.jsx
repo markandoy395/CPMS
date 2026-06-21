@@ -1,7 +1,10 @@
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { Lock, Mail, User } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { AuthVisualPanel } from '../components/AuthVisualPanel'
 import { ErrorAlert } from '../components/ErrorAlert'
+import logoSrc from '../../assets/image/logo.png'
 
 export default function SignupPage() {
   const navigate = useNavigate()
@@ -10,8 +13,7 @@ export default function SignupPage() {
     name: '',
     email: '',
     password: '',
-    confirmPassword: '',
-    role: 'Custodian'
+    confirmPassword: ''
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -38,8 +40,7 @@ export default function SignupPage() {
     const result = await signup(
       formData.email,
       formData.password,
-      formData.name,
-      formData.role
+      formData.name
     )
 
     if (result.success) {
@@ -52,12 +53,17 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="auth-page">
-      <div className="auth-container">
-        <div className="auth-card">
+    <div className="auth-page auth-page-signup">
+      <div className="auth-shell">
+        <section className="auth-form-panel">
+          <div className="auth-brand">
+            <img src={logoSrc} alt="CPMS - Custodial Property Management System" className="auth-brand-logo" />
+          </div>
+
           <div className="auth-header">
-            <h1>CPMS</h1>
-            <p>Create Account</p>
+            <span className="auth-eyebrow">Basic access</span>
+            <h1>Create an account</h1>
+            <p>Register for CPMS access to manage assigned property records and requests.</p>
           </div>
 
           {error && (
@@ -70,50 +76,69 @@ export default function SignupPage() {
           <form onSubmit={handleSubmit} className="auth-form">
             <div className="form-group">
               <label>Full Name</label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                placeholder="John Doe"
-                required
-              />
+              <div className="auth-input-wrap">
+                <User size={18} />
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  placeholder="Enter your full name"
+                  required
+                />
+              </div>
             </div>
 
             <div className="form-group">
               <label>Email</label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="your@email.com"
-                required
-              />
+              <div className="auth-input-wrap">
+                <Mail size={18} />
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  placeholder="your@email.com"
+                  required
+                />
+              </div>
             </div>
 
             <div className="form-group">
               <label>Password</label>
-              <input
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                placeholder="••••••••"
-                required
-              />
+              <div className="auth-input-wrap">
+                <Lock size={18} />
+                <input
+                  type="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  placeholder="Minimum 8 characters"
+                  minLength="8"
+                  required
+                />
+              </div>
             </div>
 
             <div className="form-group">
               <label>Confirm Password</label>
-              <input
-                type="password"
-                name="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                placeholder="••••••••"
-                required
-              />
+              <div className="auth-input-wrap">
+                <Lock size={18} />
+                <input
+                  type="password"
+                  name="confirmPassword"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  placeholder="Re-enter your password"
+                  minLength="8"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="auth-access-note">
+              <strong>Account type: Custodian</strong>
+              <span>Higher roles are assigned through User Management by an authorized administrator.</span>
             </div>
 
             <button
@@ -128,7 +153,9 @@ export default function SignupPage() {
           <div className="auth-footer">
             <p>Already have an account? <Link to="/login">Login</Link></p>
           </div>
-        </div>
+        </section>
+
+        <AuthVisualPanel />
       </div>
     </div>
   )

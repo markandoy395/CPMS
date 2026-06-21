@@ -80,8 +80,8 @@ export default function OperationsPage() {
       <div className="page-header">
         <div><h1>Operations</h1><p>Maintenance and physical inventory control.</p></div>
         <div className="header-actions">
-          {['Admin', 'Custodian'].includes(user?.role) && <button className="btn btn-secondary" onClick={() => setShowMaintenance(current => !current)}><Wrench size={18} /> Schedule Maintenance</button>}
-          {['Admin', 'Auditor'].includes(user?.role) && <button className="btn btn-primary" onClick={() => setShowVerification(current => !current)}><ClipboardCheck size={18} /> Record Verification</button>}
+          {['Super Admin', 'Admin', 'Custodian'].includes(user?.role) && <button className="btn btn-secondary" onClick={() => setShowMaintenance(current => !current)}><Wrench size={18} /> Schedule Maintenance</button>}
+          {['Super Admin', 'Admin', 'Auditor'].includes(user?.role) && <button className="btn btn-primary" onClick={() => setShowVerification(current => !current)}><ClipboardCheck size={18} /> Record Verification</button>}
         </div>
       </div>
       {error && <ErrorAlert message={error} onClose={() => setError('')} />}
@@ -117,7 +117,7 @@ export default function OperationsPage() {
 
       <div className="card"><h3>Maintenance Records</h3><div className="table-responsive"><table className="data-table">
         <thead><tr><th>Item</th><th>Type</th><th>Scheduled</th><th>Cost</th><th>Status</th><th>Action</th></tr></thead>
-        <tbody>{maintenance.map(record => <tr key={record.id}><td>{record.item_code} - {record.item_name}</td><td>{record.maintenance_type}</td><td>{record.scheduled_date}</td><td>PHP {Number(record.cost).toLocaleString()}</td><td><span className={`status-badge status-${record.status.toLowerCase().replaceAll(' ', '-')}`}>{record.status}</span></td><td>{record.status !== 'Completed' && ['Admin', 'Custodian'].includes(user?.role) && <button className="btn btn-secondary" onClick={() => updateMaintenance(record.id, 'Completed')}>Complete</button>}</td></tr>)}</tbody>
+        <tbody>{maintenance.map(record => <tr key={record.id}><td>{record.item_code} - {record.item_name}</td><td>{record.maintenance_type}</td><td>{record.scheduled_date}</td><td>PHP {Number(record.cost).toLocaleString()}</td><td><span className={`status-badge status-${record.status.toLowerCase().replaceAll(' ', '-')}`}>{record.status}</span></td><td>{record.status !== 'Completed' && ['Super Admin', 'Admin', 'Custodian'].includes(user?.role) && <button className="btn btn-secondary" onClick={() => updateMaintenance(record.id, 'Completed')}>Complete</button>}</td></tr>)}</tbody>
       </table></div></div>
 
       <div className="card"><h3>Verification History</h3><div className="table-responsive"><table className="data-table">

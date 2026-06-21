@@ -34,6 +34,10 @@ export default function ProfilePage() {
   const [activityLog, setActivityLog] = useState([])
   const [securitySummary, setSecuritySummary] = useState(null)
   const [roleStats, setRoleStats] = useState(null)
+  const profileName = profileData?.name || user?.name || 'User'
+  const profileEmail = profileData?.email || user?.email || 'No email available'
+  const profileInitial = profileName.trim().charAt(0).toUpperCase()
+  const profileStatus = profileData?.status || 'N/A'
 
   useEffect(() => {
     loadProfileData()
@@ -173,14 +177,15 @@ export default function ProfilePage() {
             </div>
           </div>
         )
+      case 'Super Admin':
       case 'Admin':
         return (
           <div className="card">
-            <h3>Admin Information</h3>
+            <h3>{user?.role} Information</h3>
             <div className="info-grid">
               <div className="info-item">
                 <span className="info-label">Permission Level:</span>
-                <span className="info-value">Full System Access</span>
+                <span className="info-value">{user?.role === 'Super Admin' ? 'Full System and Role Access' : 'Full System Access'}</span>
               </div>
               <div className="info-item">
                 <span className="info-label">Users Managed:</span>
@@ -267,34 +272,47 @@ export default function ProfilePage() {
       {activeTab === 'profile' && (
         <div className="profile-content">
           <div className="profile-grid">
-            <div className="card profile-info">
-              <h3>Profile Information</h3>
-              <div className="profile-avatar">
-                <User size={64} />
+            <div className="card profile-info profile-summary-card">
+              <div className="profile-summary-header">
+                <span>Account Profile</span>
+                <h3>Profile Information</h3>
               </div>
-              <div className="info-row">
-                <span className="info-label">Name:</span>
-                <span className="info-value">{profileData?.name}</span>
+
+              <div className="profile-summary-identity">
+                <div className="profile-avatar profile-summary-avatar">
+                  {profileInitial || <User size={42} />}
+                </div>
+                <div>
+                  <strong>{profileName}</strong>
+                  <span>{profileEmail}</span>
+                </div>
               </div>
-              <div className="info-row">
-                <span className="info-label">Email:</span>
-                <span className="info-value">{profileData?.email}</span>
-              </div>
-              <div className="info-row">
-                <span className="info-label">Role:</span>
-                <span className="info-value">{profileData?.role}</span>
-              </div>
-              <div className="info-row">
-                <span className="info-label">Status:</span>
-                <span className="info-value">{profileData?.status}</span>
-              </div>
-              <div className="info-row">
-                <span className="info-label">Member Since:</span>
-                <span className="info-value">
-                  {profileData?.created_at
-                    ? new Date(profileData.created_at).toLocaleDateString()
-                    : 'N/A'}
-                </span>
+
+              <div className="profile-summary-list">
+                <div className="info-row profile-summary-row">
+                  <span className="info-label">Name</span>
+                  <span className="info-value">{profileName}</span>
+                </div>
+                <div className="info-row profile-summary-row">
+                  <span className="info-label">Email</span>
+                  <span className="info-value">{profileEmail}</span>
+                </div>
+                <div className="info-row profile-summary-row">
+                  <span className="info-label">Role</span>
+                  <span className="info-value profile-summary-pill">{profileData?.role || 'N/A'}</span>
+                </div>
+                <div className="info-row profile-summary-row">
+                  <span className="info-label">Status</span>
+                  <span className={`info-value profile-summary-pill ${profileStatus.toLowerCase() === 'active' ? 'is-active' : ''}`}>{profileStatus}</span>
+                </div>
+                <div className="info-row profile-summary-row">
+                  <span className="info-label">Member Since</span>
+                  <span className="info-value">
+                    {profileData?.created_at
+                      ? new Date(profileData.created_at).toLocaleDateString()
+                      : 'N/A'}
+                  </span>
+                </div>
               </div>
             </div>
 

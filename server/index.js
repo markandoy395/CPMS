@@ -34,6 +34,7 @@ const allowedMimeTypes = new Set([
   'text/plain'
 ])
 const validConditions = new Set(['New', 'Good', 'Fair', 'Damaged', 'Under Repair'])
+const validUserRoles = new Set(['Super Admin', 'Admin', 'Custodian', 'Auditor'])
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 1 }
@@ -50,6 +51,23 @@ function validEmail(value) {
 function validId(value) {
   const id = Number(value)
   return Number.isInteger(id) && id > 0 ? id : null
+}
+
+function validRole(value) {
+  return validUserRoles.has(value) ? value : 'Custodian'
+}
+
+function canManageRole(actor, role) {
+  return actor?.role === 'Super Admin' || role !== 'Super Admin'
+}
+
+async function wouldRemoveLastActiveSuperAdmin(userId, nextRole = null, nextStatus = null) {
+  const user = await one('SELECT id,role,status FROM users WHERE id=?', [userId])
+  if (!user || user.role !== 'Super Admin' || user.status !== 'Active') return false
+  const keepsActiveSuperAdmin = (nextRole ?? user.role) === 'Super Admin' && (nextStatus ?? user.status) === 'Active'
+  if (keepsActiveSuperAdmin) return false
+  const count = await one("SELECT COUNT(*) count FROM users WHERE role='Super Admin' AND status='Active'")
+  return Number(count?.count || 0) <= 1
 }
 
 function parseJson(value, fallback = null) {
@@ -183,7 +201,10 @@ app.get('/users', async (_req, res) => {
   res.json({ success: true, data })
 })
 app.post('/users', async (req, res) => {
-  const role = ['Admin', 'Custodian', 'Auditor'].includes(req.body.role) ? req.body.role : 'Custodian'
+  const role = validRole(req.body.role)
+  if (!canManageRole(req.user, role)) {
+    return res.status(403).json({ success: false, message: 'Only Super Admin can create Super Admin accounts' })
+  }
   const email = String(req.body.email || '').trim().toLowerCase()
   const password = String(req.body.password || '')
   if (!validEmail(email) || password.length < 8) return res.status(422).json({ success: false, message: 'Valid email and an 8-character password are required' })
@@ -211,8 +232,16 @@ app.post('/users', async (req, res) => {
 app.put('/users/:id', async (req, res) => {
   const id = validId(req.params.id)
   if (!id) return res.status(400).json({ success: false, message: 'Invalid resource ID' })
-  const role = ['Admin', 'Custodian', 'Auditor'].includes(req.body.role) ? req.body.role : 'Custodian'
+  const existing = await one('SELECT id,role,status FROM users WHERE id=?', [id])
+  if (!existing) return res.status(404).json({ success: false, message: 'User not found' })
+  const role = validRole(req.body.role)
   const status = req.body.status === 'Inactive' ? 'Inactive' : 'Active'
+  if (!canManageRole(req.user, existing.role) || !canManageRole(req.user, role)) {
+    return res.status(403).json({ success: false, message: 'Only Super Admin can manage Super Admin accounts' })
+  }
+  if (await wouldRemoveLastActiveSuperAdmin(id, role, status)) {
+    return res.status(422).json({ success: false, message: 'At least one active Super Admin account is required' })
+  }
   await rows('UPDATE users SET name=?,email=?,role=?,status=? WHERE id=?', [String(req.body.name || '').trim(), String(req.body.email || '').trim().toLowerCase(), role, status, id])
   if (req.body.password) {
     if (String(req.body.password).length < 8) return res.status(422).json({ success: false, message: 'Password must contain at least 8 characters' })
@@ -225,6 +254,14 @@ app.delete('/users/:id', async (req, res) => {
   const id = validId(req.params.id)
   if (!id) return res.status(400).json({ success: false, message: 'Invalid resource ID' })
   if (req.user.id === id) return res.status(422).json({ success: false, message: 'You cannot deactivate your own account' })
+  const existing = await one('SELECT id,role,status FROM users WHERE id=?', [id])
+  if (!existing) return res.status(404).json({ success: false, message: 'User not found' })
+  if (!canManageRole(req.user, existing.role)) {
+    return res.status(403).json({ success: false, message: 'Only Super Admin can deactivate Super Admin accounts' })
+  }
+  if (await wouldRemoveLastActiveSuperAdmin(id, existing.role, 'Inactive')) {
+    return res.status(422).json({ success: false, message: 'At least one active Super Admin account is required' })
+  }
   await rows("UPDATE users SET status='Inactive' WHERE id=?", [id])
   await rows('DELETE FROM auth_tokens WHERE user_id=?', [id])
   await audit(req.user.id, 'deactivate', 'user', id, null, req)
@@ -531,17 +568,46 @@ app.get('/profile', authenticate, async (req, res) => {
   } })
 })
 
-app.get('/reports', authenticate, async (_req, res) => {
-  const [items, custodians, transactions, maintenance, categories, statuses, transactionTrend] = await Promise.all([
+app.get('/reports', authenticate, async (req, res) => {
+  const requestedPeriod = String(req.query.period || '').toLowerCase()
+  const analyticsPeriod = ['daily', 'weekly', 'monthly'].includes(requestedPeriod) ? requestedPeriod : 'monthly'
+  const trendStartDate = new Date()
+  trendStartDate.setHours(0, 0, 0, 0)
+
+  let trendBucketSql = "DATE_FORMAT(transaction_date,'%Y-%m')"
+  if (analyticsPeriod === 'daily') {
+    trendStartDate.setDate(trendStartDate.getDate() - 6)
+    trendBucketSql = "DATE_FORMAT(transaction_date,'%Y-%m-%d')"
+  } else if (analyticsPeriod === 'weekly') {
+    const mondayOffset = (trendStartDate.getDay() + 6) % 7
+    trendStartDate.setDate(trendStartDate.getDate() - mondayOffset - 49)
+    trendBucketSql = "DATE_FORMAT(DATE_SUB(DATE(transaction_date), INTERVAL WEEKDAY(transaction_date) DAY),'%Y-%m-%d')"
+  } else {
+    trendStartDate.setDate(1)
+    trendStartDate.setMonth(trendStartDate.getMonth() - 11)
+  }
+
+  const trendStart = `${trendStartDate.getFullYear()}-${String(trendStartDate.getMonth() + 1).padStart(2, '0')}-${String(trendStartDate.getDate()).padStart(2, '0')}`
+  const borrowTrendBucketSql = trendBucketSql.replaceAll('transaction_date', 'borrowed_date')
+
+  const [items, custodians, transactions, maintenance, categories, statuses, transactionTrend, borrowingTrend] = await Promise.all([
     one("SELECT COUNT(*) totalItems,COALESCE(SUM(total_cost),0) totalValue,SUM(status IN ('Active','Assigned')) activeCount,SUM(condition_status='Damaged') damageCount,SUM(custodian_id IS NULL AND status<>'Disposed') notDistributedCount,SUM(custodian_id IS NOT NULL AND status<>'Disposed') assignedCount FROM items"),
     one("SELECT COUNT(*) totalCustodians,SUM(status='Active') activeCustodians,SUM(status='Inactive') inactiveCustodians FROM custodians"),
     one("SELECT COUNT(*) totalTransactions,SUM(transaction_type='Issuance') issuances,SUM(transaction_type='Transfer') transfers,SUM(transaction_type='Return') returns,SUM(transaction_type='Disposal') disposals FROM transactions"),
     one("SELECT COUNT(*) total,SUM(status='Pending') pending,SUM(status='Completed') completed FROM maintenance_records"),
     rows('SELECT category label,COUNT(*) value FROM items GROUP BY category ORDER BY value DESC,category ASC'),
     rows('SELECT status label,COUNT(*) value FROM items GROUP BY status ORDER BY value DESC,status ASC'),
-    rows("SELECT DATE_FORMAT(transaction_date,'%Y-%m') month,COUNT(*) total,SUM(transaction_type='Issuance') issuances,SUM(transaction_type='Transfer') transfers,SUM(transaction_type='Return') returns_count,SUM(transaction_type='Disposal') disposals FROM transactions WHERE transaction_date>=DATE_FORMAT(DATE_SUB(CURDATE(),INTERVAL 5 MONTH),'%Y-%m-01') GROUP BY DATE_FORMAT(transaction_date,'%Y-%m') ORDER BY month ASC")
+    rows(`SELECT ${trendBucketSql} month,COUNT(*) total,SUM(transaction_type='Issuance') issuances,SUM(transaction_type='Transfer') transfers,SUM(transaction_type='Return') returns_count,SUM(transaction_type='Disposal') disposals FROM transactions WHERE transaction_date>=? GROUP BY ${trendBucketSql} ORDER BY month ASC`, [trendStart]),
+    rows(`SELECT ${borrowTrendBucketSql} month,COUNT(*) borrowings FROM borrow_records WHERE borrowed_date>=? GROUP BY ${borrowTrendBucketSql} ORDER BY month ASC`, [trendStart])
   ])
-  res.json({ success: true, data: { items, custodians, transactions, maintenance, analytics: { categories, statuses, transaction_trend: transactionTrend }, generated_at: new Date().toISOString() } })
+  const trendMap = new Map(transactionTrend.map(record => [record.month, { ...record, borrowings: 0 }]))
+  borrowingTrend.forEach(record => {
+    const current = trendMap.get(record.month) || { month: record.month, total: 0, issuances: 0, transfers: 0, returns_count: 0, disposals: 0 }
+    current.borrowings = Number(record.borrowings || 0)
+    current.total = Number(current.total || 0) + Number(record.borrowings || 0)
+    trendMap.set(record.month, current)
+  })
+  res.json({ success: true, data: { items, custodians, transactions, maintenance, analytics: { categories, statuses, transaction_trend: Array.from(trendMap.values()).sort((a, b) => a.month.localeCompare(b.month)), period: analyticsPeriod }, generated_at: new Date().toISOString() } })
 })
 
 app.use('/documents', authenticate)

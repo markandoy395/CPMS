@@ -72,7 +72,7 @@ export async function optionalAuthenticate(req, _res, next) {
 }
 
 export function requireRoles(...roles) {
-  return (req, res, next) => roles.includes(req.user?.role)
+  return (req, res, next) => req.user?.role === 'Super Admin' || roles.includes(req.user?.role)
     ? next()
     : res.status(403).json({ success: false, message: 'You do not have permission for this action' })
 }

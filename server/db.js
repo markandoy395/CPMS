@@ -24,6 +24,11 @@ export async function one(sql, params = [], executor = pool) {
 }
 
 export async function ensureDatabaseSchema() {
+  const roleColumn = await one("SHOW COLUMNS FROM users LIKE 'role'")
+  if (roleColumn && !String(roleColumn.Type).includes("'Super Admin'")) {
+    await rows("ALTER TABLE users MODIFY role ENUM('Super Admin','Admin','Custodian','Auditor') NOT NULL DEFAULT 'Custodian'")
+  }
+
   const statusColumn = await one("SHOW COLUMNS FROM items LIKE 'status'")
   if (statusColumn && !String(statusColumn.Type).includes("'Borrowed'")) {
     await rows("ALTER TABLE items MODIFY status ENUM('Active','Assigned','Borrowed','In Repair','Returned','Disposed','Lost') NOT NULL DEFAULT 'Active'")

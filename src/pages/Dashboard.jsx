@@ -1,9 +1,11 @@
-import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertCircle,
   Check,
   Coins,
+  Download,
   Package,
+  RefreshCw,
   Repeat2,
   TrendingUp,
   Users,
@@ -23,37 +25,109 @@ function monthKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
-function buildTransactionTrend(rows = []) {
-  const values = new Map(rows.map(row => [row.month, row]))
-  return Array.from({ length: 6 }, (_, index) => {
-    const date = new Date()
-    date.setDate(1)
-    date.setMonth(date.getMonth() - (5 - index))
-    const row = values.get(monthKey(date)) || {}
+function dateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function startOfWeek(date) {
+  const start = new Date(date)
+  const mondayOffset = (start.getDay() + 6) % 7
+  start.setDate(start.getDate() - mondayOffset)
+  start.setHours(0, 0, 0, 0)
+  return start
+}
+
+function getTrendConfig(period) {
+  if (period === 'daily') {
     return {
-      month: date.toLocaleDateString('en-US', { month: 'short' }),
+      count: 7,
+      column: 'Day',
+      label: 'Last 7 days',
+      getDate: index => {
+        const date = new Date()
+        date.setDate(date.getDate() - (6 - index))
+        return date
+      },
+      getKey: dateKey,
+      getLabel: date => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    }
+  }
+
+  if (period === 'weekly') {
+    return {
+      count: 8,
+      column: 'Week',
+      label: 'Last 8 weeks',
+      getDate: index => {
+        const date = startOfWeek(new Date())
+        date.setDate(date.getDate() - (7 * (7 - index)))
+        return date
+      },
+      getKey: dateKey,
+      getLabel: date => `Week of ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+    }
+  }
+
+  return {
+    count: 12,
+    column: 'Month',
+    label: 'Last 12 months',
+    getDate: index => {
+      const date = new Date()
+      date.setDate(1)
+      date.setMonth(date.getMonth() - (11 - index))
+      return date
+    },
+    getKey: monthKey,
+    getLabel: date => date.toLocaleDateString('en-US', { month: 'short' })
+  }
+}
+
+function buildTransactionTrend(rows = [], period = 'monthly') {
+  const config = getTrendConfig(period)
+  const values = new Map(rows.map(row => [row.month, row]))
+  return Array.from({ length: config.count }, (_, index) => {
+    const date = config.getDate(index)
+    const row = values.get(config.getKey(date)) || {}
+    return {
+      month: config.getLabel(date),
       Transactions: numberValue(row.total),
       Issuances: numberValue(row.issuances),
-      Transfers: numberValue(row.transfers)
+      Transfers: numberValue(row.transfers),
+      Borrowings: numberValue(row.borrowings)
     }
   })
+}
+
+function csvEscape(value) {
+  const text = String(value ?? '')
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
 }
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
+  const [chartPeriod, setChartPeriod] = useState('monthly')
 
-  useEffect(() => {
-    const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async ({ keepContent = false } = {}) => {
+    try {
       setError('')
-      const result = await reportService.getSummary()
+      if (keepContent) setRefreshing(true)
+      else setLoading(true)
+      const result = await reportService.getSummary({ period: chartPeriod })
       if (result.success) setStats(result.data)
       else setError(result.message || 'Failed to load dashboard data')
+    } finally {
       setLoading(false)
+      setRefreshing(false)
     }
+  }, [chartPeriod])
+
+  useEffect(() => {
     loadDashboardData()
-  }, [])
+  }, [loadDashboardData])
 
   const categoryData = useMemo(() => (stats?.analytics?.categories || []).map(row => ({
     name: row.label,
@@ -65,7 +139,34 @@ export default function Dashboard() {
     value: numberValue(row.value)
   })), [stats])
 
-  const trendData = useMemo(() => buildTransactionTrend(stats?.analytics?.transaction_trend), [stats])
+  const trendData = useMemo(() => buildTransactionTrend(stats?.analytics?.transaction_trend, chartPeriod), [stats, chartPeriod])
+  const trendConfig = useMemo(() => getTrendConfig(chartPeriod), [chartPeriod])
+
+  const handleExportAnalytics = () => {
+    const sections = [
+      ['Transaction Activity'],
+      [trendConfig.column, 'Transactions', 'Issuances', 'Transfers', 'Borrowings'],
+      ...trendData.map(row => [row.month, row.Transactions, row.Issuances, row.Transfers, row.Borrowings]),
+      [],
+      ['Assets by Category'],
+      ['Category', 'Assets'],
+      ...categoryData.map(row => [row.name, row.Assets]),
+      [],
+      ['Asset Status'],
+      ['Status', 'Assets'],
+      ...statusData.map(row => [row.name, row.value])
+    ]
+    const csv = sections.map(row => row.map(csvEscape).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `cpms-visual-analytics-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
 
   if (loading) return <LoadingSpinner message="Loading system data..." />
 
@@ -118,6 +219,22 @@ export default function Dashboard() {
       <section className="dashboard-section" aria-labelledby="dashboard-analytics-title">
         <div className="dashboard-section-header">
           <div><h2 id="dashboard-analytics-title">Visual Analytics</h2><p>Distribution and activity from recorded inventory data</p></div>
+          <div className="dashboard-section-actions">
+            <label className="dashboard-range-control">
+              <span>View</span>
+              <select value={chartPeriod} onChange={event => setChartPeriod(event.target.value)}>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </label>
+            <button className="btn btn-secondary dashboard-action-btn" type="button" onClick={() => loadDashboardData({ keepContent: true })} disabled={refreshing}>
+              <RefreshCw size={16} className={refreshing ? 'is-spinning' : ''} /> Refresh
+            </button>
+            <button className="btn btn-primary dashboard-action-btn" type="button" onClick={handleExportAnalytics} disabled={!stats}>
+              <Download size={16} /> Export
+            </button>
+          </div>
         </div>
 
         <Suspense fallback={<div className="dashboard-chart-loading">Loading visual analytics...</div>}>
@@ -126,6 +243,7 @@ export default function Dashboard() {
             categoryData={categoryData}
             statusData={statusData}
             totalAssets={numberValue(stats?.items?.totalItems)}
+            rangeLabel={trendConfig.label}
           />
         </Suspense>
       </section>

@@ -5,6 +5,7 @@ import { SuccessAlert } from '../components/SuccessAlert'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { userService } from '../services/userService'
 import { FormOverlay } from '../components/FormOverlay'
+import { useAuth } from '../context/AuthContext'
 
 const emptyForm = {
   name: '',
@@ -16,6 +17,8 @@ const emptyForm = {
 }
 
 export default function UserManagementPage() {
+  const { user } = useAuth()
+  const isSuperAdmin = user?.role === 'Super Admin'
   const [users, setUsers] = useState([])
   const [auditLogs, setAuditLogs] = useState([])
   const [formData, setFormData] = useState(emptyForm)
@@ -100,10 +103,10 @@ export default function UserManagementPage() {
           <p>Manage access, roles, and account status.</p>
         </div>
         <button className="btn btn-primary" onClick={() => {
-          setEditingId(null)
-          setFormData(emptyForm)
-          setShowForm(current => !current)
-        }}>
+                    setEditingId(null)
+                    setFormData(emptyForm)
+                    setShowForm(current => !current)
+                  }}>
           <Plus size={18} /> Add User
         </button>
       </div>
@@ -134,6 +137,7 @@ export default function UserManagementPage() {
               <div className="form-group">
                 <label>Role</label>
                 <select value={formData.role} onChange={event => setFormData({ ...formData, role: event.target.value })}>
+                  {isSuperAdmin && <option>Super Admin</option>}
                   <option>Custodian</option>
                   <option>Auditor</option>
                   <option>Admin</option>
@@ -176,8 +180,8 @@ export default function UserManagementPage() {
                   <td><span className={`status-badge status-${user.status.toLowerCase()}`}>{user.status}</span></td>
                   <td>{new Date(user.created_at).toLocaleDateString()}</td>
                   <td className="action-buttons">
-                    <button className="btn-icon btn-edit" onClick={() => handleEdit(user)} aria-label="Edit user"><Edit size={16} /></button>
-                    <button className="btn-icon btn-delete" onClick={() => handleDeactivate(user.id)} aria-label="Deactivate user"><UserX size={16} /></button>
+                    {(isSuperAdmin || user.role !== 'Super Admin') && <button className="btn-icon btn-edit" onClick={() => handleEdit(user)} aria-label="Edit user"><Edit size={16} /></button>}
+                    {(isSuperAdmin || user.role !== 'Super Admin') && <button className="btn-icon btn-delete" onClick={() => handleDeactivate(user.id)} aria-label="Deactivate user"><UserX size={16} /></button>}
                   </td>
                 </tr>
               ))}

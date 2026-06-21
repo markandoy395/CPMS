@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Menu, X, LogOut, Settings, User, Briefcase } from 'lucide-react'
+import { Menu, X, LogOut, Settings, User } from 'lucide-react'
+import logoSrc from '../../assets/image/logo.png'
 
 export function Navbar() {
   const { user, logout } = useAuth()
@@ -17,8 +18,7 @@ export function Navbar() {
     <nav className="navbar">
       <div className="navbar-container">
         <Link to="/" className="navbar-logo">
-          <Briefcase size={24} style={{marginRight: '8px', display: 'inline-block'}} />
-          CPMS
+          <img src={logoSrc} alt="CPMS - Custodial Property Management System" className="navbar-logo-image" />
         </Link>
 
         <button

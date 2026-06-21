@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
   name VARCHAR(120) NOT NULL,
   email VARCHAR(190) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
-  role ENUM('Admin', 'Custodian', 'Auditor') NOT NULL DEFAULT 'Custodian',
+  role ENUM('Super Admin', 'Admin', 'Custodian', 'Auditor') NOT NULL DEFAULT 'Custodian',
   status ENUM('Active', 'Inactive') NOT NULL DEFAULT 'Active',
   phone VARCHAR(40) NULL,
   address VARCHAR(255) NULL,

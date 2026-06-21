@@ -46,8 +46,8 @@ function createEmptyItemForm() {
 
 export default function InventoryPage() {
   const { user } = useAuth()
-  const canManage = user?.role === 'Admin'
-  const canAdd = ['Admin', 'Custodian'].includes(user?.role)
+  const canManage = ['Super Admin', 'Admin'].includes(user?.role)
+  const canAdd = ['Super Admin', 'Admin', 'Custodian'].includes(user?.role)
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')

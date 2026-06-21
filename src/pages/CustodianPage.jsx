@@ -9,7 +9,7 @@ import { FormOverlay } from '../components/FormOverlay'
 
 export default function CustodianPage() {
   const { user } = useAuth()
-  const canManage = user?.role === 'Admin'
+  const canManage = ['Super Admin', 'Admin'].includes(user?.role)
   const [custodians, setCustodians] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')

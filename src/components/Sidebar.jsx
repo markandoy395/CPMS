@@ -10,7 +10,6 @@ import {
   Wrench,
   Settings,
   LogOut,
-  Briefcase,
   User
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -18,8 +17,10 @@ import { useAuth } from '../context/AuthContext'
 export function Sidebar() {
   const location = useLocation()
   const { logout, user } = useAuth()
+  const userInitial = user?.name?.trim()?.charAt(0)?.toUpperCase()
 
   const isActive = (path) => location.pathname === path
+  const canAccess = (item) => user?.role === 'Super Admin' || !item.roles || item.roles.includes(user?.role)
 
   const handleLogout = async () => {
     await logout()
@@ -41,19 +42,30 @@ export function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-logo">
-        <Briefcase size={28} className="logo-icon" />
-        <span className="logo-text">CPMS</span>
-      </div>
+      <Link to="/profile" className="sidebar-user">
+        <div className="sidebar-user-avatar" aria-hidden="true">
+          {userInitial || <User size={22} />}
+        </div>
+        <div className="sidebar-user-details">
+          <span className="sidebar-user-name">{user?.name || 'User'}</span>
+          <span className="sidebar-user-role">{user?.role || 'Account'}</span>
+        </div>
+      </Link>
 
       <nav className="sidebar-nav">
-        {menuItems.filter(item => !item.roles || item.roles.includes(user?.role)).map(item => {
+        {menuItems.map(item => {
           const Icon = item.icon
+          const allowed = canAccess(item)
           return (
             <Link
               key={item.path}
               to={item.path}
-              className={`sidebar-item ${isActive(item.path) ? 'active' : ''}`}
+              className={`sidebar-item ${isActive(item.path) ? 'active' : ''} ${allowed ? '' : 'disabled'}`}
+              onClick={event => {
+                if (!allowed) event.preventDefault()
+              }}
+              aria-disabled={!allowed}
+              title={allowed ? item.label : 'Your role cannot access this section'}
             >
               <Icon size={20} />
               <span>{item.label}</span>

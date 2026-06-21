@@ -84,7 +84,7 @@ export function AssetAttachments({ item, onClose }) {
         </div>
         {error && <ErrorAlert message={error} onClose={() => setError('')} />}
         {success && <SuccessAlert message={success} onClose={() => setSuccess('')} />}
-        {['Admin', 'Custodian'].includes(user?.role) && (
+        {['Super Admin', 'Admin', 'Custodian'].includes(user?.role) && (
           <label className={`btn btn-primary attachment-upload ${uploading ? 'disabled' : ''}`}>
             <Upload size={18} /> {uploading ? 'Uploading...' : 'Upload Photo or File'}
             <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.docx,.xlsx,.txt" onChange={upload} disabled={uploading} />
@@ -102,7 +102,7 @@ export function AssetAttachments({ item, onClose }) {
               </div>
               <div className="attachment-actions">
                 <button className="btn-icon" onClick={() => download(attachment)} aria-label="Download attachment"><Download size={16} /></button>
-                {user?.role === 'Admin' && <button className="btn-icon btn-delete" onClick={() => remove(attachment.id)} aria-label="Delete attachment"><Trash2 size={16} /></button>}
+                {['Super Admin', 'Admin'].includes(user?.role) && <button className="btn-icon btn-delete" onClick={() => remove(attachment.id)} aria-label="Delete attachment"><Trash2 size={16} /></button>}
               </div>
             </div>
           ))}

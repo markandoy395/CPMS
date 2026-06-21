@@ -36,7 +36,7 @@ function emptyBorrowing() {
 
 export default function TransactionsPage() {
   const { user } = useAuth()
-  const canBorrow = ['Admin', 'Custodian'].includes(user?.role)
+  const canBorrow = ['Super Admin', 'Admin', 'Custodian'].includes(user?.role)
   const [transactions, setTransactions] = useState([])
   const [borrowings, setBorrowings] = useState([])
   const [items, setItems] = useState([])
@@ -136,7 +136,7 @@ export default function TransactionsPage() {
         <div><h1>Transactions</h1><p>Property movement and short-term asset borrowing.</p></div>
         <div className="header-actions">
           {canBorrow && <button className="btn btn-secondary" onClick={() => { setBorrowForm(emptyBorrowing()); setShowBorrowForm(true) }}><BookOpen size={18} /> Borrow Asset</button>}
-          {user?.role === 'Admin' && <button className="btn btn-primary" onClick={() => { setFormData(emptyTransaction()); setShowForm(true) }}><Plus size={18} /> Record Transaction</button>}
+          {['Super Admin', 'Admin'].includes(user?.role) && <button className="btn btn-primary" onClick={() => { setFormData(emptyTransaction()); setShowForm(true) }}><Plus size={18} /> Record Transaction</button>}
         </div>
       </div>
 
