@@ -141,6 +141,42 @@ CREATE TABLE IF NOT EXISTS borrow_records (
   INDEX idx_borrow_item (item_id)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS borrow_requests (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  item_id BIGINT UNSIGNED NOT NULL,
+  requester_id BIGINT UNSIGNED NULL,
+  public_token CHAR(64) NULL,
+  borrower_name VARCHAR(180) NOT NULL,
+  borrower_reference VARCHAR(100) NULL,
+  department VARCHAR(120) NULL,
+  contact_number VARCHAR(40) NULL,
+  purpose TEXT NULL,
+  requested_borrow_date DATE NOT NULL,
+  due_date DATE NOT NULL,
+  condition_out ENUM('New', 'Good', 'Fair', 'Damaged', 'Under Repair') NOT NULL DEFAULT 'Good',
+  remarks TEXT NULL,
+  status ENUM('Pending', 'Approved', 'Picked Up', 'Rejected', 'Cancelled') NOT NULL DEFAULT 'Pending',
+  ticket_number VARCHAR(40) NULL,
+  reviewed_by BIGINT UNSIGNED NULL,
+  reviewed_at DATETIME NULL,
+  picked_up_at DATETIME NULL,
+  picked_up_by BIGINT UNSIGNED NULL,
+  review_notes TEXT NULL,
+  borrow_record_id BIGINT UNSIGNED NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_borrow_request_item FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE RESTRICT,
+  CONSTRAINT fk_borrow_requester FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_borrow_request_reviewer FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_borrow_request_pickup_by FOREIGN KEY (picked_up_by) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_borrow_request_record FOREIGN KEY (borrow_record_id) REFERENCES borrow_records(id) ON DELETE SET NULL,
+  UNIQUE KEY uq_borrow_request_public_token (public_token),
+  UNIQUE KEY uq_borrow_request_ticket (ticket_number),
+  INDEX idx_borrow_request_status (status, created_at),
+  INDEX idx_borrow_request_item (item_id),
+  INDEX idx_borrow_requester (requester_id)
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS maintenance_records (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   item_id BIGINT UNSIGNED NOT NULL,

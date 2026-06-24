@@ -19,6 +19,24 @@ export const transactionService = {
   getBorrowings(filters = {}) {
     return apiRequest('/borrowings', { query: filters })
   },
+  getBorrowRequests(filters = {}) {
+    return apiRequest('/borrow-requests', { query: filters })
+  },
+  createBorrowRequest(data) {
+    return apiRequest('/borrow-requests', { method: 'POST', body: data })
+  },
+  approveBorrowRequest(id, data = {}) {
+    return apiRequest(`/borrow-requests/${id}/approve`, { method: 'PUT', body: data })
+  },
+  markBorrowRequestPickedUp(id) {
+    return apiRequest(`/borrow-requests/${id}/pickup`, { method: 'PUT' })
+  },
+  rejectBorrowRequest(id, data = {}) {
+    return apiRequest(`/borrow-requests/${id}/reject`, { method: 'PUT', body: data })
+  },
+  cancelBorrowRequest(id, data = {}) {
+    return apiRequest(`/borrow-requests/${id}/cancel`, { method: 'PUT', body: data })
+  },
   createBorrowing(data) {
     return apiRequest('/borrowings', { method: 'POST', body: data })
   },

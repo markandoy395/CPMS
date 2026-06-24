@@ -43,6 +43,8 @@ const upload = multer({
 app.disable('x-powered-by')
 app.use(cors({ origin: ['http://localhost:3000', 'http://127.0.0.1:3000'] }))
 app.use(express.json({ limit: '2mb' }))
+app.use('/assets', express.static(path.join(rootDirectory, 'assets')))
+app.use('/user', express.static(path.join(rootDirectory, 'user')))
 
 function validEmail(value) {
   return /^\S+@\S+\.\S+$/.test(String(value || ''))
@@ -59,6 +61,14 @@ function validRole(value) {
 
 function canManageRole(actor, role) {
   return actor?.role === 'Super Admin' || role !== 'Super Admin'
+}
+
+function canReviewBorrowRequests(user) {
+  return user?.role === 'Super Admin' || user?.role === 'Admin'
+}
+
+function makeBorrowTicketNumber(requestId) {
+  return `CPMS-${new Date().getFullYear()}-${String(requestId).padStart(6, '0')}`
 }
 
 async function wouldRemoveLastActiveSuperAdmin(userId, nextRole = null, nextStatus = null) {
@@ -195,6 +205,111 @@ app.post('/auth/password', authenticate, async (req, res) => {
   res.json({ success: true })
 })
 
+app.get('/public/items', async (req, res) => {
+  let sql = `SELECT i.id,i.item_name,i.item_code,i.serial_number,i.category,i.building,i.room_number,i.department,
+    i.condition_status AS \`condition\`,i.status,i.custodian_id,
+    (SELECT a.id FROM asset_attachments a WHERE a.item_id=i.id AND a.attachment_type='Photo' AND a.mime_type LIKE 'image/%' ORDER BY a.created_at DESC LIMIT 1) photo_id
+    FROM items i WHERE i.status<>'Disposed'`
+  const values = []
+  if (req.query.search) {
+    sql += ' AND (i.item_name LIKE ? OR i.item_code LIKE ? OR i.serial_number LIKE ? OR i.category LIKE ?)'
+    const term = `%${req.query.search}%`
+    values.push(term, term, term, term)
+  }
+  if (req.query.status) {
+    sql += ' AND i.status=?'
+    values.push(req.query.status)
+  }
+  sql += ' ORDER BY i.item_name ASC,i.item_code ASC'
+  const data = (await rows(sql, values)).map(item => ({
+    ...item,
+    image_url: item.photo_id ? `/public/items/${item.id}/photo` : null,
+    available_for_borrow: ['Active', 'Returned'].includes(item.status) && !item.custodian_id
+  }))
+  res.json({ success: true, data })
+})
+
+app.get('/public/items/:id/photo', async (req, res) => {
+  const itemId = validId(req.params.id)
+  if (!itemId) return res.status(400).json({ success: false, message: 'Invalid item ID' })
+  const file = await one(`SELECT a.* FROM asset_attachments a JOIN items i ON i.id=a.item_id
+    WHERE a.item_id=? AND i.status<>'Disposed' AND a.attachment_type='Photo' AND a.mime_type LIKE 'image/%'
+    ORDER BY a.created_at DESC LIMIT 1`, [itemId])
+  if (!file) return res.status(404).json({ success: false, message: 'Item photo not found' })
+  const filePath = path.join(attachmentDirectory, file.stored_name)
+  if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, message: 'Stored photo is missing' })
+  res.setHeader('Content-Type', file.mime_type)
+  res.setHeader('Content-Length', file.file_size)
+  res.setHeader('Cache-Control', 'public, max-age=300')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  fs.createReadStream(filePath).pipe(res)
+})
+
+app.post('/public/borrow-requests', async (req, res) => {
+  const itemId = validId(req.body.item_id)
+  const borrowerName = String(req.body.borrower_name || '').trim()
+  const requestedBorrowDate = req.body.requested_borrow_date
+  const dueDate = req.body.due_date
+  const conditionOut = validConditions.has(req.body.condition_out) ? req.body.condition_out : 'Good'
+  if (!itemId || !borrowerName || !requestedBorrowDate || !dueDate) {
+    return res.status(422).json({ success: false, message: 'Item, borrower name, borrow date, and due date are required' })
+  }
+  if (dueDate < requestedBorrowDate) return res.status(422).json({ success: false, message: 'Due date cannot be before the borrow date' })
+
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    const item = await one('SELECT * FROM items WHERE id=? FOR UPDATE', [itemId], connection)
+    if (!item) throw httpError(404, 'Item not found')
+    if (!['Active', 'Returned'].includes(item.status) || item.custodian_id) throw httpError(422, 'This asset is not available for borrowing')
+    const activeBorrow = await one("SELECT id FROM borrow_records WHERE item_id=? AND status IN ('Borrowed','Overdue') FOR UPDATE", [itemId], connection)
+    if (activeBorrow) throw httpError(422, 'This asset already has an active borrowing record')
+    const duplicateRequest = await one(
+      "SELECT id FROM borrow_requests WHERE item_id=? AND borrower_name=? AND COALESCE(contact_number,'')=? AND status='Pending' FOR UPDATE",
+      [itemId, borrowerName, req.body.contact_number || ''],
+      connection
+    )
+    if (duplicateRequest) throw httpError(422, 'A pending request for this borrower and item already exists')
+    const publicToken = crypto.randomBytes(32).toString('hex')
+    const [result] = await connection.execute(
+      `INSERT INTO borrow_requests (item_id,requester_id,public_token,borrower_name,borrower_reference,department,contact_number,purpose,requested_borrow_date,due_date,condition_out,remarks,status)
+       VALUES (?,NULL,?,?,?,?,?,?,?,?,?,?,'Pending')`,
+      [itemId, publicToken, borrowerName, req.body.borrower_reference || null, req.body.department || null, req.body.contact_number || null,
+        req.body.purpose || null, requestedBorrowDate, dueDate, conditionOut, req.body.remarks || null]
+    )
+    await audit(null, 'public_request_borrow', 'borrow_request', result.insertId, { item_id: itemId, due_date: dueDate }, req, connection)
+    await connection.commit()
+    res.status(201).json({ success: true, data: { id: result.insertId, token: publicToken } })
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
+})
+
+app.get('/public/borrow-requests/:id', async (req, res) => {
+  const id = validId(req.params.id)
+  const token = String(req.query.token || '').trim()
+  if (!id || !/^[a-f0-9]{64}$/i.test(token)) {
+    return res.status(400).json({ success: false, message: 'Valid request and ticket token are required' })
+  }
+
+  const request = await one(
+    `SELECT r.id,r.borrower_name,r.borrower_reference,r.department,r.contact_number,r.purpose,
+      r.requested_borrow_date,r.due_date,r.status,r.ticket_number,r.reviewed_at,r.picked_up_at,r.review_notes,r.created_at,
+      i.item_name,i.item_code,i.serial_number,b.id borrowing_id,b.status borrow_status,b.borrowed_date,b.returned_date
+     FROM borrow_requests r
+     JOIN items i ON i.id=r.item_id
+     LEFT JOIN borrow_records b ON b.id=r.borrow_record_id
+     WHERE r.id=? AND r.public_token=?`,
+    [id, token]
+  )
+  if (!request) return res.status(404).json({ success: false, message: 'Request ticket not found' })
+
+  res.json({ success: true, data: request })
+})
+
 app.use('/users', authenticate, requireRoles('Admin'))
 app.get('/users', async (_req, res) => {
   const data = await rows('SELECT id,name,email,role,status,created_at,updated_at FROM users ORDER BY created_at DESC')
@@ -306,6 +421,8 @@ app.delete('/items/:id', requireRoles('Admin'), async (req, res) => {
   if (Number(count.count) > 0) return res.status(422).json({ success: false, message: 'Items with transaction history cannot be deleted' })
   const borrowCount = await one('SELECT COUNT(*) count FROM borrow_records WHERE item_id=?', [req.params.id])
   if (Number(borrowCount.count) > 0) return res.status(422).json({ success: false, message: 'Items with borrowing history cannot be deleted' })
+  const borrowRequestCount = await one('SELECT COUNT(*) count FROM borrow_requests WHERE item_id=?', [req.params.id])
+  if (Number(borrowRequestCount.count) > 0) return res.status(422).json({ success: false, message: 'Items with borrow request history cannot be deleted' })
   await rows('DELETE FROM items WHERE id=?', [req.params.id])
   await audit(req.user.id, 'delete', 'item', req.params.id, null, req)
   res.json({ success: true })
@@ -418,12 +535,181 @@ app.post('/transactions', requireRoles('Admin'), async (req, res) => {
 app.put('/transactions/:id', (_req, res) => res.status(405).json({ success: false, message: 'Transactions are immutable; create a correcting transaction instead' }))
 app.delete('/transactions/:id', (_req, res) => res.status(405).json({ success: false, message: 'Transactions are retained for audit history' }))
 
+app.use('/borrow-requests', authenticate)
+app.get('/borrow-requests', async (req, res) => {
+  let sql = `SELECT r.*,i.item_name,i.item_code,i.serial_number,i.category,i.status item_status,i.condition_status item_condition,
+    requester.name requester_name,reviewer.name reviewer_name,picker.name picked_up_by_name,b.status borrow_status
+    FROM borrow_requests r JOIN items i ON i.id=r.item_id LEFT JOIN users requester ON requester.id=r.requester_id
+    LEFT JOIN users reviewer ON reviewer.id=r.reviewed_by LEFT JOIN users picker ON picker.id=r.picked_up_by
+    LEFT JOIN borrow_records b ON b.id=r.borrow_record_id WHERE 1=1`
+  const values = []
+  if (!canReviewBorrowRequests(req.user)) {
+    sql += ' AND r.requester_id=?'
+    values.push(req.user.id)
+  }
+  if (req.query.status) {
+    const statuses = String(req.query.status)
+      .split(',')
+      .map(status => status.trim())
+      .filter(Boolean)
+    if (statuses.length) {
+      sql += ` AND r.status IN (${statuses.map(() => '?').join(',')})`
+      values.push(...statuses)
+    }
+  }
+  if (req.query.needs_action === '1') {
+    sql += " AND (r.status='Pending' OR (r.status='Approved' AND r.picked_up_at IS NULL AND b.status IN ('Borrowed','Overdue')))"
+  }
+  if (req.query.search) {
+    sql += ' AND (r.borrower_name LIKE ? OR r.borrower_reference LIKE ? OR i.item_name LIKE ? OR i.item_code LIKE ?)'
+    const term = `%${req.query.search}%`
+    values.push(term, term, term, term)
+  }
+  sql += " ORDER BY FIELD(r.status,'Pending','Approved','Picked Up','Rejected','Cancelled'),r.created_at DESC"
+  res.json({ success: true, data: await rows(sql, values) })
+})
+app.post('/borrow-requests', async (req, res) => {
+  const itemId = validId(req.body.item_id)
+  const borrowerName = String(req.body.borrower_name || req.user.name || '').trim()
+  const requestedBorrowDate = req.body.requested_borrow_date
+  const dueDate = req.body.due_date
+  const conditionOut = validConditions.has(req.body.condition_out) ? req.body.condition_out : 'Good'
+  if (!itemId || !borrowerName || !requestedBorrowDate || !dueDate) {
+    return res.status(422).json({ success: false, message: 'Item, borrower, borrow date, and due date are required' })
+  }
+  if (dueDate < requestedBorrowDate) return res.status(422).json({ success: false, message: 'Due date cannot be before the borrow date' })
+
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    const item = await one('SELECT * FROM items WHERE id=? FOR UPDATE', [itemId], connection)
+    if (!item) throw httpError(404, 'Item not found')
+    if (!['Active', 'Returned'].includes(item.status) || item.custodian_id) throw httpError(422, 'This asset is not available for borrowing')
+    const activeBorrow = await one("SELECT id FROM borrow_records WHERE item_id=? AND status IN ('Borrowed','Overdue') FOR UPDATE", [itemId], connection)
+    if (activeBorrow) throw httpError(422, 'This asset already has an active borrowing record')
+    const duplicateRequest = await one("SELECT id FROM borrow_requests WHERE item_id=? AND requester_id=? AND status='Pending' FOR UPDATE", [itemId, req.user.id], connection)
+    if (duplicateRequest) throw httpError(422, 'You already have a pending request for this item')
+    const [result] = await connection.execute(
+      `INSERT INTO borrow_requests (item_id,requester_id,borrower_name,borrower_reference,department,contact_number,purpose,requested_borrow_date,due_date,condition_out,remarks,status)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,'Pending')`,
+      [itemId, req.user.id, borrowerName, req.body.borrower_reference || null, req.body.department || null, req.body.contact_number || null,
+        req.body.purpose || null, requestedBorrowDate, dueDate, conditionOut, req.body.remarks || null]
+    )
+    await audit(req.user.id, 'request_borrow', 'borrow_request', result.insertId, { item_id: itemId, due_date: dueDate }, req, connection)
+    await connection.commit()
+    res.status(201).json({ success: true, data: { id: result.insertId } })
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
+})
+app.put('/borrow-requests/:id/approve', requireRoles('Admin'), async (req, res) => {
+  const id = validId(req.params.id)
+  if (!id) return res.status(400).json({ success: false, message: 'Invalid borrow request ID' })
+
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    const request = await one('SELECT * FROM borrow_requests WHERE id=? FOR UPDATE', [id], connection)
+    if (!request) throw httpError(404, 'Borrow request not found')
+    if (request.status !== 'Pending') throw httpError(422, 'Only pending borrow requests can be approved')
+
+    const item = await one('SELECT * FROM items WHERE id=? FOR UPDATE', [request.item_id], connection)
+    if (!item) throw httpError(404, 'Item not found')
+    if (!['Active', 'Returned'].includes(item.status) || item.custodian_id) throw httpError(422, 'This asset is no longer available for borrowing')
+    const activeBorrow = await one("SELECT id FROM borrow_records WHERE item_id=? AND status IN ('Borrowed','Overdue') FOR UPDATE", [request.item_id], connection)
+    if (activeBorrow) throw httpError(422, 'This asset already has an active borrowing record')
+
+    const borrowedDate = req.body.borrowed_date || request.requested_borrow_date
+    const dueDate = req.body.due_date || request.due_date
+    const conditionOut = validConditions.has(req.body.condition_out) ? req.body.condition_out : request.condition_out
+    if (dueDate < borrowedDate) throw httpError(422, 'Due date cannot be before the borrowed date')
+    const ticketNumber = request.ticket_number || makeBorrowTicketNumber(id)
+
+    const [borrowResult] = await connection.execute(
+      `INSERT INTO borrow_records (item_id,borrower_name,borrower_reference,department,contact_number,purpose,borrowed_date,due_date,condition_out,remarks,status,recorded_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,'Borrowed',?)`,
+      [request.item_id, request.borrower_name, request.borrower_reference, request.department, request.contact_number,
+        request.purpose, borrowedDate, dueDate, conditionOut, request.remarks, req.user.id]
+    )
+    await connection.execute("UPDATE items SET status='Borrowed',condition_status=? WHERE id=?", [conditionOut, request.item_id])
+    await connection.execute(
+      "UPDATE borrow_requests SET status='Approved',ticket_number=?,reviewed_by=?,reviewed_at=NOW(),review_notes=?,borrow_record_id=? WHERE id=?",
+      [ticketNumber, req.user.id, req.body.review_notes || null, borrowResult.insertId, id]
+    )
+    await audit(req.user.id, 'approve_borrow_request', 'borrow_request', id, { item_id: request.item_id, borrowing_id: borrowResult.insertId, ticket_number: ticketNumber }, req, connection)
+    await connection.commit()
+    res.json({ success: true, data: { borrowing_id: borrowResult.insertId, ticket_number: ticketNumber } })
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
+})
+app.put('/borrow-requests/:id/pickup', requireRoles('Admin'), async (req, res) => {
+  const id = validId(req.params.id)
+  if (!id) return res.status(400).json({ success: false, message: 'Invalid borrow request ID' })
+
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    const request = await one('SELECT * FROM borrow_requests WHERE id=? FOR UPDATE', [id], connection)
+    if (!request) throw httpError(404, 'Borrow request not found')
+    if (request.status !== 'Approved') throw httpError(422, 'Only approved borrow requests can be marked as picked up')
+    if (!request.borrow_record_id) throw httpError(422, 'Approve this request before marking the item as picked up')
+    if (request.picked_up_at) throw httpError(422, 'This item was already marked as picked up')
+
+    const record = await one('SELECT * FROM borrow_records WHERE id=? FOR UPDATE', [request.borrow_record_id], connection)
+    if (!record) throw httpError(404, 'Borrowing record not found')
+    if (!['Borrowed', 'Overdue'].includes(record.status)) throw httpError(422, 'This borrowing record is already closed')
+
+    await connection.execute("UPDATE borrow_requests SET status='Picked Up',picked_up_at=NOW(),picked_up_by=? WHERE id=?", [req.user.id, id])
+    await audit(req.user.id, 'mark_borrow_request_picked_up', 'borrow_request', id, { item_id: request.item_id, borrowing_id: request.borrow_record_id }, req, connection)
+    await connection.commit()
+    res.json({ success: true })
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
+})
+app.put('/borrow-requests/:id/reject', requireRoles('Admin'), async (req, res) => {
+  const id = validId(req.params.id)
+  if (!id) return res.status(400).json({ success: false, message: 'Invalid borrow request ID' })
+  const request = await one('SELECT * FROM borrow_requests WHERE id=?', [id])
+  if (!request) return res.status(404).json({ success: false, message: 'Borrow request not found' })
+  if (request.status !== 'Pending') return res.status(422).json({ success: false, message: 'Only pending borrow requests can be rejected' })
+  await rows("UPDATE borrow_requests SET status='Rejected',reviewed_by=?,reviewed_at=NOW(),review_notes=? WHERE id=?", [req.user.id, req.body.review_notes || null, id])
+  await audit(req.user.id, 'reject_borrow_request', 'borrow_request', id, { item_id: request.item_id }, req)
+  res.json({ success: true })
+})
+app.put('/borrow-requests/:id/cancel', async (req, res) => {
+  const id = validId(req.params.id)
+  if (!id) return res.status(400).json({ success: false, message: 'Invalid borrow request ID' })
+  const request = await one('SELECT * FROM borrow_requests WHERE id=?', [id])
+  if (!request) return res.status(404).json({ success: false, message: 'Borrow request not found' })
+  if (request.status !== 'Pending') return res.status(422).json({ success: false, message: 'Only pending borrow requests can be cancelled' })
+  if (request.requester_id !== req.user.id && !canReviewBorrowRequests(req.user)) {
+    return res.status(403).json({ success: false, message: 'You can only cancel your own pending requests' })
+  }
+  await rows("UPDATE borrow_requests SET status='Cancelled',reviewed_by=?,reviewed_at=NOW(),review_notes=? WHERE id=?", [req.user.id, req.body.review_notes || null, id])
+  await audit(req.user.id, 'cancel_borrow_request', 'borrow_request', id, { item_id: request.item_id }, req)
+  res.json({ success: true })
+})
+
 app.use('/borrowings', authenticate)
 app.get('/borrowings', async (req, res) => {
   await rows("UPDATE borrow_records SET status='Overdue' WHERE status='Borrowed' AND due_date<CURDATE()")
-  let sql = `SELECT b.*,i.item_name,i.item_code,i.serial_number,u.name recorded_by_name,ru.name returned_by_name
+  let sql = `SELECT b.*,i.item_name,i.item_code,i.serial_number,u.name recorded_by_name,ru.name returned_by_name,
+      r.id borrow_request_id,r.ticket_number,r.picked_up_at,r.picked_up_by,picker.name picked_up_by_name
     FROM borrow_records b JOIN items i ON i.id=b.item_id JOIN users u ON u.id=b.recorded_by
-    LEFT JOIN users ru ON ru.id=b.returned_by WHERE 1=1`
+    LEFT JOIN users ru ON ru.id=b.returned_by
+    LEFT JOIN borrow_requests r ON r.borrow_record_id=b.id
+    LEFT JOIN users picker ON picker.id=r.picked_up_by WHERE 1=1`
   const values = []
   if (req.query.status) { sql += ' AND b.status=?'; values.push(req.query.status) }
   if (req.query.search) {

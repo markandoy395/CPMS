@@ -1611,7 +1611,90 @@ body {
 
 /* ========== TABLES ========== */
 .table-responsive {
-  overflow-x: auto;
+  --scroll-container-max-height: min(58vh, 520px);
+}
+
+.line-items-table-wrap,
+.summary-list,
+.notification-settings,
+.activity-list,
+.attachment-grid,
+.template-list,
+.profile-summary-list,
+.preferences-list,
+.notifications-list,
+.system-info {
+  --scroll-container-max-height: min(46vh, 420px);
+}
+
+:is(
+  .table-responsive,
+  .line-items-table-wrap,
+  .summary-list,
+  .notification-settings,
+  .activity-list,
+  .attachment-grid,
+  .template-list,
+  .profile-summary-list,
+  .preferences-list,
+  .notifications-list,
+  .system-info
+) {
+  max-height: var(--scroll-container-max-height);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--primary) var(--light);
+  scrollbar-width: thin;
+}
+
+:is(
+  .table-responsive,
+  .line-items-table-wrap,
+  .summary-list,
+  .notification-settings,
+  .activity-list,
+  .attachment-grid,
+  .template-list,
+  .profile-summary-list,
+  .preferences-list,
+  .notifications-list,
+  .system-info
+)::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+:is(
+  .table-responsive,
+  .line-items-table-wrap,
+  .summary-list,
+  .notification-settings,
+  .activity-list,
+  .attachment-grid,
+  .template-list,
+  .profile-summary-list,
+  .preferences-list,
+  .notifications-list,
+  .system-info
+)::-webkit-scrollbar-track {
+  background: var(--light);
+}
+
+:is(
+  .table-responsive,
+  .line-items-table-wrap,
+  .summary-list,
+  .notification-settings,
+  .activity-list,
+  .attachment-grid,
+  .template-list,
+  .profile-summary-list,
+  .preferences-list,
+  .notifications-list,
+  .system-info
+)::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--primary);
 }
 
 .data-table {
@@ -1625,6 +1708,10 @@ body {
 }
 
 .data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: var(--light);
   padding: 1rem;
   text-align: left;
   font-weight: 600;
@@ -1717,6 +1804,26 @@ body {
 
 .status-overdue {
   background-color: rgba(var(--danger-rgb), 0.11);
+  color: var(--danger);
+}
+
+.status-pending {
+  background-color: rgba(var(--warning-rgb), 0.12);
+  color: var(--warning);
+}
+
+.status-approved {
+  background-color: rgba(var(--success-rgb), 0.1);
+  color: var(--success);
+}
+
+.status-picked-up {
+  background-color: rgba(var(--primary-dark-rgb), 0.12);
+  color: var(--primary-dark);
+}
+
+.status-rejected {
+  background-color: rgba(var(--danger-rgb), 0.1);
   color: var(--danger);
 }
 
@@ -1865,6 +1972,12 @@ body {
   min-height: 34px;
   padding: 0.4rem 0.65rem;
   white-space: nowrap;
+}
+
+.borrow-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .notification-toast-viewport {
