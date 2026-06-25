@@ -200,6 +200,49 @@ body {
   height: 100%;
 }
 
+.device-access-blocker {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background:
+    radial-gradient(circle at top left, rgba(var(--primary-rgb), 0.18), transparent 30rem),
+    linear-gradient(135deg, var(--primary-dark), var(--primary));
+}
+
+.device-access-panel {
+  width: min(460px, 100%);
+  padding: 1.75rem 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 28px 72px rgba(var(--dark-rgb), 0.3);
+  text-align: center;
+}
+
+.device-access-logo {
+  width: 150px;
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto 1.1rem;
+}
+
+.device-access-panel h1 {
+  color: var(--text-primary);
+  font-size: 1.55rem;
+  line-height: 1.2;
+}
+
+.device-access-panel p {
+  margin-top: 0.65rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
 .app-layout {
   display: flex;
   height: 100vh;

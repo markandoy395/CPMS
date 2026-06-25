@@ -33,6 +33,16 @@ function statusClass(status) {
   return String(status || '').toLowerCase().replace(/\s+/g, '-')
 }
 
+const SUPPLY_OFFICE = 'Supply Office'
+
+function roomFromRemarks(remarks) {
+  return /^Room:\s*([^;]+)/i.exec(String(remarks || ''))?.[1]?.trim() || ''
+}
+
+function requesterLocation(record) {
+  return [record.department, roomFromRemarks(record.remarks)].filter(Boolean).join(' / ') || '-'
+}
+
 function emptyTransaction() {
   return { item_id: '', custodian_id: '', transaction_type: 'Issuance', notes: '', par_id: '', ics_id: '' }
 }
@@ -275,8 +285,8 @@ export default function TransactionsPage() {
               <tbody>
                 {borrowRequests.length ? borrowRequests.map(record => (
                   <tr key={record.id}>
-                    <td><strong>{record.item_code}</strong><br /><span className="table-secondary">{record.item_name}</span></td>
-                    <td>{record.borrower_name}<br /><span className="table-secondary">{record.requester_name || record.borrower_reference || record.contact_number || 'Public user'}</span></td>
+                    <td><strong>{record.item_code}</strong><br /><span className="table-secondary">{record.item_name}</span><br /><span className="table-secondary">Source: {SUPPLY_OFFICE}</span></td>
+                    <td>{record.borrower_name}<br /><span className="table-secondary">{record.requester_name || record.borrower_reference || record.contact_number || 'Public user'}</span><br /><span className="table-secondary">{requesterLocation(record)}</span></td>
                     <td>{formatDate(record.requested_borrow_date)}</td>
                     <td>{formatDate(record.due_date)}</td>
                     <td>{formatDuration(record.requested_borrow_date, record.due_date)}</td>
@@ -319,7 +329,7 @@ export default function TransactionsPage() {
                 const awaitingPickup = isBorrowingAwaitingPickup(record)
                 return (
                   <tr key={record.id}>
-                    <td><strong>{record.item_code}</strong><br /><span className="table-secondary">{record.item_name}</span></td>
+                    <td><strong>{record.item_code}</strong><br /><span className="table-secondary">{record.item_name}</span><br /><span className="table-secondary">Source: {SUPPLY_OFFICE}</span></td>
                     <td>{record.borrower_name}<br /><span className="table-secondary">{record.borrower_reference || record.department || '-'}</span></td>
                     <td>{formatDate(record.borrowed_date)}</td>
                     <td>{formatDate(record.due_date)}</td>

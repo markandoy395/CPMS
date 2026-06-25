@@ -50,6 +50,10 @@ function validEmail(value) {
   return /^\S+@\S+\.\S+$/.test(String(value || ''))
 }
 
+function validUsername(value) {
+  return /^[a-zA-Z0-9._-]{3,40}$/.test(String(value || ''))
+}
+
 function validId(value) {
   const id = Number(value)
   return Number.isInteger(id) && id > 0 ? id : null
@@ -69,6 +73,46 @@ function canReviewBorrowRequests(user) {
 
 function makeBorrowTicketNumber(requestId) {
   return `CPMS-${new Date().getFullYear()}-${String(requestId).padStart(6, '0')}`
+}
+
+function cleanPublicBorrower(borrower) {
+  if (!borrower) return borrower
+  return {
+    id: borrower.id,
+    username: borrower.username,
+    borrower_name: borrower.borrower_name,
+    department: borrower.department,
+    room_name: borrower.room_name
+  }
+}
+
+async function createPublicSession(borrower, req) {
+  const token = crypto.randomBytes(32).toString('hex')
+  await rows(
+    'INSERT INTO public_auth_tokens (borrower_id,token_hash,expires_at) VALUES (?,?,DATE_ADD(NOW(),INTERVAL 30 DAY))',
+    [borrower.id, sha256(token)]
+  )
+  await audit(null, 'public_login', 'public_borrower', borrower.id, { username: borrower.username }, req)
+  return { token, user: cleanPublicBorrower(borrower) }
+}
+
+async function authenticatePublicBorrower(req, res, next) {
+  try {
+    const token = bearerToken(req)
+    if (!token) return res.status(401).json({ success: false, message: 'User login is required' })
+
+    const borrower = await one(
+      `SELECT b.id,b.username,b.borrower_name,b.department,b.room_name,b.status,b.created_at
+       FROM public_auth_tokens t JOIN public_borrowers b ON b.id=t.borrower_id
+       WHERE t.token_hash=? AND t.expires_at>NOW() AND b.status='Active'`,
+      [sha256(token)]
+    )
+    if (!borrower) return res.status(401).json({ success: false, message: 'User session expired. Please login again.' })
+    req.publicBorrower = borrower
+    next()
+  } catch (error) {
+    next(error)
+  }
 }
 
 async function wouldRemoveLastActiveSuperAdmin(userId, nextRole = null, nextStatus = null) {
@@ -206,7 +250,8 @@ app.post('/auth/password', authenticate, async (req, res) => {
 })
 
 app.get('/public/items', async (req, res) => {
-  let sql = `SELECT i.id,i.item_name,i.item_code,i.serial_number,i.category,i.building,i.room_number,i.department,
+  let sql = `SELECT i.id,i.item_name,i.description,i.item_code,i.serial_number,i.category,i.subcategory,
+    i.brand,i.model_number,i.campus,i.building,i.room_number,i.department,i.asset_type,i.quantity,
     i.condition_status AS \`condition\`,i.status,i.custodian_id,
     (SELECT a.id FROM asset_attachments a WHERE a.item_id=i.id AND a.attachment_type='Photo' AND a.mime_type LIKE 'image/%' ORDER BY a.created_at DESC LIMIT 1) photo_id
     FROM items i WHERE i.status<>'Disposed'`
@@ -245,9 +290,59 @@ app.get('/public/items/:id/photo', async (req, res) => {
   fs.createReadStream(filePath).pipe(res)
 })
 
-app.post('/public/borrow-requests', async (req, res) => {
-  const itemId = validId(req.body.item_id)
+app.post('/public/auth/register', async (req, res) => {
+  const username = String(req.body.username || '').trim().toLowerCase()
+  const password = String(req.body.password || '')
   const borrowerName = String(req.body.borrower_name || '').trim()
+  const department = String(req.body.department || '').trim()
+  const roomName = String(req.body.room_name || '').trim()
+
+  if (!validUsername(username)) {
+    return res.status(422).json({ success: false, message: 'Username must be 3-40 letters, numbers, dots, underscores, or dashes' })
+  }
+  if (password.length < 8 || !borrowerName || !department || !roomName) {
+    return res.status(422).json({ success: false, message: 'Name, department, room name, and an 8-character password are required' })
+  }
+  if (await one('SELECT id FROM public_borrowers WHERE username=? LIMIT 1', [username])) {
+    return res.status(409).json({ success: false, message: 'Username is already taken' })
+  }
+
+  const result = await rows(
+    'INSERT INTO public_borrowers (username,password_hash,borrower_name,department,room_name) VALUES (?,?,?,?,?)',
+    [username, await hashPassword(password), borrowerName, department, roomName]
+  )
+  const borrower = await one(
+    'SELECT id,username,borrower_name,department,room_name FROM public_borrowers WHERE id=?',
+    [result.insertId]
+  )
+  const session = await createPublicSession(borrower, req)
+  res.status(201).json({ success: true, ...session })
+})
+
+app.post('/public/auth/login', async (req, res) => {
+  const username = String(req.body.username || '').trim().toLowerCase()
+  const password = String(req.body.password || '')
+  const borrower = await one('SELECT * FROM public_borrowers WHERE username=? LIMIT 1', [username])
+
+  if (!borrower || borrower.status !== 'Active' || !(await verifyPassword(password, borrower.password_hash))) {
+    return res.status(401).json({ success: false, message: 'Invalid username or password' })
+  }
+
+  const session = await createPublicSession(borrower, req)
+  res.json({ success: true, ...session })
+})
+
+app.post('/public/auth/logout', async (req, res) => {
+  const token = bearerToken(req)
+  if (token) {
+    await rows('DELETE FROM public_auth_tokens WHERE token_hash=?', [sha256(token)])
+  }
+  res.json({ success: true })
+})
+
+app.post('/public/borrow-requests', authenticatePublicBorrower, async (req, res) => {
+  const itemId = validId(req.body.item_id)
+  const borrowerName = String(req.publicBorrower.borrower_name || req.body.borrower_name || '').trim()
   const requestedBorrowDate = req.body.requested_borrow_date
   const dueDate = req.body.due_date
   const conditionOut = validConditions.has(req.body.condition_out) ? req.body.condition_out : 'Good'
@@ -271,11 +366,15 @@ app.post('/public/borrow-requests', async (req, res) => {
     )
     if (duplicateRequest) throw httpError(422, 'A pending request for this borrower and item already exists')
     const publicToken = crypto.randomBytes(32).toString('hex')
+    const remarks = [
+      `Room: ${req.publicBorrower.room_name}`,
+      req.body.remarks || null
+    ].filter(Boolean).join('; ')
     const [result] = await connection.execute(
       `INSERT INTO borrow_requests (item_id,requester_id,public_token,borrower_name,borrower_reference,department,contact_number,purpose,requested_borrow_date,due_date,condition_out,remarks,status)
        VALUES (?,NULL,?,?,?,?,?,?,?,?,?,?,'Pending')`,
-      [itemId, publicToken, borrowerName, req.body.borrower_reference || null, req.body.department || null, req.body.contact_number || null,
-        req.body.purpose || null, requestedBorrowDate, dueDate, conditionOut, req.body.remarks || null]
+      [itemId, publicToken, borrowerName, req.publicBorrower.username, req.publicBorrower.department, req.body.contact_number || null,
+        req.body.purpose || null, requestedBorrowDate, dueDate, conditionOut, remarks || null]
     )
     await audit(null, 'public_request_borrow', 'borrow_request', result.insertId, { item_id: itemId, due_date: dueDate }, req, connection)
     await connection.commit()

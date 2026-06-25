@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="page-shell">
+    <main class="page-shell" hidden>
       <header class="gateway-header">
         <a class="brand-lockup" href="./" aria-label="CPMS User Gateway home">
           <img src="/assets/image/logo.png" alt="CPMS" />
@@ -23,39 +23,13 @@
               aria-expanded="false"
               aria-controls="notificationPanel"
             >
-              <svg
-                class="notification-icon"
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                fill="none"
-              >
-                <path
-                  d="M18 8A6 6 0 0 0 6 8c0 7-3 7-3 9h18c0-2-3-2-3-9Z"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-                <path
-                  d="M13.73 21a2 2 0 0 1-3.46 0"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
+              <svg class="notification-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 7-3 9h18c0-2-3-2-3-9Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
-              <span
-                class="notification-badge"
-                id="notificationBadge"
-                hidden
-              ></span>
+              <span class="notification-badge" id="notificationBadge" hidden></span>
             </button>
-            <div
-              class="notification-panel"
-              id="notificationPanel"
-              role="status"
-              hidden
-            >
+            <div class="notification-panel" id="notificationPanel" role="status" hidden>
               <div class="notification-panel-head">
                 <strong>Admin Updates</strong>
                 <span id="notificationCount">0 new</span>
@@ -71,6 +45,7 @@
               <strong id="visitorName">User</strong>
               <small id="visitorRole">Borrower</small>
             </div>
+            <button class="logout-button" id="logoutButton" type="button">Logout</button>
           </div>
         </div>
       </header>
@@ -85,12 +60,7 @@
       <section class="toolbar" aria-label="Inventory filters">
         <label class="search-field">
           <span>Find an item</span>
-          <input
-            id="searchInput"
-            type="search"
-            placeholder="Search by name, code, or serial number"
-            autocomplete="off"
-          />
+          <input id="searchInput" type="search" placeholder="Search by name, code, or serial number" autocomplete="off" />
         </label>
         <label>
           <span>Availability</span>
@@ -106,14 +76,8 @@
         </label>
       </section>
 
-      <section
-        class="category-strip"
-        id="categoryStrip"
-        aria-label="Browse by category"
-      >
-        <button class="category-chip active" type="button" data-category="">
-          All Items
-        </button>
+      <section class="category-strip" id="categoryStrip" aria-label="Browse by category">
+        <button class="category-chip active" type="button" data-category="">All Items</button>
       </section>
 
       <p class="alert" id="messageBox" role="status" hidden></p>
@@ -136,31 +100,42 @@
       </section>
     </main>
 
+    <div class="modal" id="itemDetailModal" hidden>
+      <div class="modal-panel detail-panel" role="dialog" aria-modal="true" aria-labelledby="itemDetailTitle">
+        <div class="modal-header">
+          <div>
+            <h2 id="itemDetailTitle">Item Details</h2>
+            <p id="itemDetailAvailability">Inventory specifications</p>
+          </div>
+          <button class="icon-button" id="closeDetailButton" type="button" aria-label="Close item details">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+              <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </div>
+        <div class="detail-content">
+          <div class="detail-media" id="itemDetailImage"></div>
+          <div class="detail-info">
+            <span class="status-badge" id="itemDetailStatus">active</span>
+            <p class="detail-description" id="itemDetailDescription"></p>
+            <dl class="detail-specs" id="itemDetailSpecs"></dl>
+            <div class="form-actions">
+              <button class="btn btn-primary" id="detailRequestButton" type="button">Request Item</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="modal" id="requestModal" hidden>
-      <div
-        class="modal-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="requestTitle"
-      >
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="requestTitle">
         <div class="modal-header">
           <div>
             <h2 id="requestTitle">Borrow Request</h2>
           </div>
-          <button
-            class="icon-button"
-            id="closeModalButton"
-            type="button"
-            aria-label="Close request form"
-          >
+          <button class="icon-button" id="closeModalButton" type="button" aria-label="Close request form">
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M18 6 6 18M6 6l12 12"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
+              <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </button>
         </div>
@@ -168,57 +143,27 @@
           <div class="form-grid">
             <label>
               <span>Borrower Name *</span>
-              <input
-                id="borrowerName"
-                name="borrower_name"
-                autocomplete="name"
-                required
-              />
+              <input id="borrowerName" name="borrower_name" autocomplete="name" required />
             </label>
             <label>
               <span>Borrower ID / Reference</span>
-              <input
-                id="borrowerReference"
-                name="borrower_reference"
-                autocomplete="username"
-              />
+              <input id="borrowerReference" name="borrower_reference" autocomplete="username" />
             </label>
             <label>
               <span>Department / Office</span>
-              <input
-                id="department"
-                name="department"
-                autocomplete="organization"
-              />
+              <input id="department" name="department" autocomplete="organization" />
             </label>
             <label>
               <span>Contact Number</span>
-              <input
-                id="contactNumber"
-                name="contact_number"
-                type="tel"
-                autocomplete="tel"
-              />
+              <input id="contactNumber" name="contact_number" type="tel" autocomplete="tel" />
             </label>
             <label>
               <span>Borrow Date *</span>
-              <input
-                id="borrowDate"
-                name="requested_borrow_date"
-                type="date"
-                required
-              />
+              <input id="borrowDate" name="requested_borrow_date" type="date" required />
             </label>
             <label>
               <span>Borrow Duration (days) *</span>
-              <input
-                id="borrowDuration"
-                name="borrow_duration_days"
-                type="number"
-                min="1"
-                max="365"
-                required
-              />
+              <input id="borrowDuration" name="borrow_duration_days" type="number" min="1" max="365" required />
             </label>
             <label>
               <span>Due Date *</span>
@@ -234,17 +179,13 @@
             </label>
           </div>
           <div class="form-actions">
-            <button class="btn btn-primary" id="submitButton" type="submit">
-              Submit Request
-            </button>
-            <button class="btn btn-secondary" id="cancelButton" type="button">
-              Cancel
-            </button>
+            <button class="btn btn-primary" id="submitButton" type="submit">Submit Request</button>
+            <button class="btn btn-secondary" id="cancelButton" type="button">Cancel</button>
           </div>
         </form>
       </div>
     </div>
 
-    <script src="./app.js"></script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>

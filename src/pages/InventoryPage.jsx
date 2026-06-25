@@ -4,12 +4,20 @@ import { LoadingSpinner } from '../components/LoadingSpinner'
 import { ErrorAlert } from '../components/ErrorAlert'
 import { SuccessAlert } from '../components/SuccessAlert'
 import { itemService } from '../services/itemService'
+import { custodianService } from '../services/custodianService'
 import { useAuth } from '../context/AuthContext'
 import { AssetScanner } from '../components/AssetScanner'
 import { AssetLabelModal } from '../components/AssetLabelModal'
 import { AssetAttachments } from '../components/AssetAttachments'
 import { FormOverlay } from '../components/FormOverlay'
 import { CursorTooltip } from '../components/CursorTooltip'
+
+const SUPPLY_OFFICE = 'Supply Office'
+
+function numberValue(value, fallback = 0) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
 
 function createEmptyItemForm() {
   return {
@@ -29,9 +37,9 @@ function createEmptyItemForm() {
     total_cost: 0,
     funding_source: '',
     campus: '',
-    building: '',
-    room_number: '',
-    department: '',
+    building: SUPPLY_OFFICE,
+    room_number: SUPPLY_OFFICE,
+    department: SUPPLY_OFFICE,
     assigned_to: '',
     custodian_id: '',
     asset_type: 'Fixed Asset',
@@ -44,6 +52,15 @@ function createEmptyItemForm() {
   }
 }
 
+function normalizeItemForm(data) {
+  return {
+    ...data,
+    building: data.building || SUPPLY_OFFICE,
+    room_number: data.room_number || SUPPLY_OFFICE,
+    department: SUPPLY_OFFICE
+  }
+}
+
 export default function InventoryPage() {
   const { user } = useAuth()
   const canManage = ['Super Admin', 'Admin'].includes(user?.role)
@@ -52,6 +69,7 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [custodians, setCustodians] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -70,12 +88,16 @@ export default function InventoryPage() {
   const loadItems = async () => {
     try {
       setError('')
-      const result = await itemService.getAllItems()
+      const [result, custodianResult] = await Promise.all([
+        itemService.getAllItems(),
+        custodianService.getAllCustodians({ status: 'Active' })
+      ])
       if (result.success) {
         setItems(result.data)
       } else {
         setError(result.message)
       }
+      if (custodianResult.success) setCustodians(custodianResult.data)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -104,11 +126,12 @@ export default function InventoryPage() {
     setLoading(true)
 
     try {
+      const payload = normalizeItemForm(formData)
       let result
       if (editingId) {
-        result = await itemService.updateItem(editingId, formData)
+        result = await itemService.updateItem(editingId, payload)
       } else {
-        result = await itemService.createItem(formData)
+        result = await itemService.createItem(payload)
       }
 
       if (result.success) {
@@ -143,7 +166,7 @@ export default function InventoryPage() {
   }
 
   const handleEdit = (item) => {
-    setFormData(item)
+    setFormData(normalizeItemForm({ ...item, condition: item.condition || item.condition_status || 'New' }))
     setEditingId(item.id)
     setShowForm(true)
   }
@@ -235,7 +258,7 @@ export default function InventoryPage() {
                 <div><dt>Item code</dt><dd>{scanResult.item.item_code}</dd></div>
                 <div><dt>Serial number</dt><dd>{scanResult.item.serial_number || 'N/A'}</dd></div>
                 <div><dt>Status</dt><dd>{scanResult.item.status}</dd></div>
-                <div><dt>Department</dt><dd>{scanResult.item.department || 'Unassigned'}</dd></div>
+                <div><dt>Source office</dt><dd>{SUPPLY_OFFICE}</dd></div>
               </>}
             </dl>
             <div className="scanned-asset-actions">
@@ -407,8 +430,9 @@ export default function InventoryPage() {
                   <input
                     type="number"
                     value={formData.unit_cost}
-                    onChange={(e) => setFormData({ ...formData, unit_cost: parseFloat(e.target.value) })}
+                    onChange={(e) => setFormData({ ...formData, unit_cost: numberValue(e.target.value) })}
                     step="0.01"
+                    min="0"
                   />
                 </div>
                 <div className="form-group">
@@ -416,8 +440,9 @@ export default function InventoryPage() {
                   <input
                     type="number"
                     value={formData.total_cost}
-                    onChange={(e) => setFormData({ ...formData, total_cost: parseFloat(e.target.value) })}
+                    onChange={(e) => setFormData({ ...formData, total_cost: numberValue(e.target.value) })}
                     step="0.01"
+                    min="0"
                   />
                 </div>
                 <div className="form-group">
@@ -437,9 +462,9 @@ export default function InventoryPage() {
               </div>
             </div>
 
-            {/* Location & Assignment */}
+            {/* Supply source and assignment */}
             <div className="form-section">
-              <h4>Location & Assignment</h4>
+              <h4>Supply Source & Assignment</h4>
               <div className="form-grid">
                 <div className="form-group">
                   <label>Campus</label>
@@ -451,30 +476,29 @@ export default function InventoryPage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Building</label>
+                  <label>Supply Building</label>
                   <input
                     type="text"
                     value={formData.building}
                     onChange={(e) => setFormData({ ...formData, building: e.target.value })}
-                    placeholder="e.g., Admin Building, Faculty Block A"
+                    placeholder="e.g., Supply Office"
                   />
                 </div>
                 <div className="form-group">
-                  <label>Room Number</label>
+                  <label>Supply Room</label>
                   <input
                     type="text"
                     value={formData.room_number}
                     onChange={(e) => setFormData({ ...formData, room_number: e.target.value })}
-                    placeholder="e.g., 301, Lab-B"
+                    placeholder="e.g., Supply Office"
                   />
                 </div>
                 <div className="form-group">
-                  <label>Department</label>
+                  <label>Source Office</label>
                   <input
                     type="text"
-                    value={formData.department}
-                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                    placeholder="e.g., IT Department, Finance"
+                    value={SUPPLY_OFFICE}
+                    readOnly
                   />
                 </div>
                 <div className="form-group">
@@ -487,13 +511,18 @@ export default function InventoryPage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Custodian ID</label>
-                  <input
-                    type="text"
+                  <label>Assigned Custodian</label>
+                  <select
                     value={formData.custodian_id}
                     onChange={(e) => setFormData({ ...formData, custodian_id: e.target.value })}
-                    placeholder="e.g., CUST-001"
-                  />
+                  >
+                    <option value="">None</option>
+                    {custodians.map(custodian => (
+                      <option key={custodian.id} value={custodian.id}>
+                        {custodian.users?.name || custodian.name || 'Custodian'} - {custodian.department}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
@@ -518,7 +547,7 @@ export default function InventoryPage() {
                   <input
                     type="number"
                     value={formData.quantity}
-                    onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) })}
+                    onChange={(e) => setFormData({ ...formData, quantity: Math.max(1, numberValue(e.target.value, 1)) })}
                     min="1"
                   />
                 </div>
@@ -579,7 +608,10 @@ export default function InventoryPage() {
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                   >
                     <option value="Active">Active</option>
+                    <option value="Assigned">Assigned</option>
+                    <option value="Borrowed">Borrowed</option>
                     <option value="In Repair">In Repair</option>
+                    <option value="Returned">Returned</option>
                     <option value="Disposed">Disposed</option>
                     <option value="Lost">Lost</option>
                   </select>
@@ -652,7 +684,7 @@ export default function InventoryPage() {
                 <th>Category</th>
                 <th>Serial #</th>
                 <th>Condition</th>
-                <th>Department</th>
+                <th>Source Office</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -666,7 +698,7 @@ export default function InventoryPage() {
                     <td>{item.category}</td>
                     <td>{item.serial_number || 'N/A'}</td>
                     <td>{item.condition || 'N/A'}</td>
-                    <td>{item.department || 'N/A'}</td>
+                    <td>{SUPPLY_OFFICE}</td>
                     <td>
                       <span className={`status-badge status-${item.status.toLowerCase().replace(/\s+/g, '-')}`}>
                         {item.status}

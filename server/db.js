@@ -34,6 +34,28 @@ export async function ensureDatabaseSchema() {
     await rows("ALTER TABLE items MODIFY status ENUM('Active','Assigned','Borrowed','In Repair','Returned','Disposed','Lost') NOT NULL DEFAULT 'Active'")
   }
 
+  await rows(`CREATE TABLE IF NOT EXISTS public_borrowers (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(80) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    borrower_name VARCHAR(180) NOT NULL,
+    department VARCHAR(120) NOT NULL,
+    room_name VARCHAR(120) NOT NULL,
+    status ENUM('Active','Inactive') NOT NULL DEFAULT 'Active',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB`)
+
+  await rows(`CREATE TABLE IF NOT EXISTS public_auth_tokens (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    borrower_id BIGINT UNSIGNED NOT NULL,
+    token_hash CHAR(64) NOT NULL UNIQUE,
+    expires_at DATETIME NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_public_tokens_borrower FOREIGN KEY (borrower_id) REFERENCES public_borrowers(id) ON DELETE CASCADE,
+    INDEX idx_public_tokens_expiry (expires_at)
+  ) ENGINE=InnoDB`)
+
   await rows(`CREATE TABLE IF NOT EXISTS borrow_records (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     item_id BIGINT UNSIGNED NOT NULL,
